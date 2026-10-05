@@ -1,0 +1,14 @@
+# Rahasia & sesi login
+.env
+.qa-agent/
+
+# Hasil run (berisi screenshot aplikasi)
+runs/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+*.egg-info/
