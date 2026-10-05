@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Laporan QA — {{ meta.module or meta.target }}</title>
+<style>
+:root { --bg:#f6f7f9; --card:#fff; --text:#1d2330; --muted:#5b6474; --line:#e3e6eb;
+  --pass:#1e7b3a; --pass-bg:#d8f1df; --fail:#a4161a; --fail-bg:#fbdcdc; --review:#7a5200; --review-bg:#fff0c2;
+  --neutral:#4a4f59; --neutral-bg:#e6e8ec; }
+* { box-sizing:border-box; }
+body { margin:0; font-family:system-ui,-apple-system,"Segoe UI",sans-serif; background:var(--bg); color:var(--text); line-height:1.5; }
+header { background:#1f2a44; color:#fff; padding:24px 32px; }
+header h1 { margin:0 0 4px; font-size:22px; }
+header .meta { color:#c9d1e3; font-size:14px; }
+main { max-width:1200px; margin:0 auto; padding:24px 16px 64px; }
+.counters { display:flex; gap:12px; flex-wrap:wrap; margin-bottom:8px; }
+.counter { background:var(--card); border:1px solid var(--line); border-radius:8px; padding:12px 16px; min-width:120px; }
+.counter b { display:block; font-size:24px; }
+.badge { display:inline-block; padding:2px 10px; border-radius:999px; font-size:12px; font-weight:600; white-space:nowrap; }
+.s-pass { background:var(--pass-bg); color:var(--pass); }
+.s-fail { background:var(--fail-bg); color:var(--fail); }
+.s-perlu-review { background:var(--review-bg); color:var(--review); }
+.s-blocked, .s-skipped, .s-none, .s-belum-dijalankan { background:var(--neutral-bg); color:var(--neutral); }
+section h2 { font-size:18px; margin:32px 0 12px; }
+.filters { display:flex; gap:16px; margin:12px 0; flex-wrap:wrap; font-size:14px; }
+select { padding:6px 10px; border:1px solid var(--line); border-radius:6px; background:#fff; }
+details.tc { background:var(--card); border:1px solid var(--line); border-radius:8px; margin-bottom:10px; }
+details.tc > summary { cursor:pointer; padding:12px 16px; display:flex; gap:12px; align-items:center; list-style:none; }
+details.tc > summary::-webkit-details-marker { display:none; }
+.tc-body { padding:4px 16px 16px; border-top:1px solid var(--line); }
+table.kv { border-collapse:collapse; width:100%; margin:12px 0; font-size:14px; }
+table.kv th { text-align:left; width:180px; color:var(--muted); font-weight:500; vertical-align:top; padding:4px 8px 4px 0; }
+table.kv td { padding:4px 0; white-space:pre-wrap; }
+ol.steps { padding-left:20px; }
+ol.steps li { margin-bottom:18px; }
+.thought { color:var(--muted); font-size:13px; }
+.warn { color:var(--fail); font-size:13px; }
+.signals { font-family:ui-monospace,Consolas,monospace; font-size:12px; color:var(--fail); }
+img.shot { max-width:100%; width:640px; border:1px solid var(--line); border-radius:6px; cursor:zoom-in; margin-top:6px; display:block; }
+#lightbox { position:fixed; inset:0; background:rgba(0,0,0,.85); display:none; align-items:center; justify-content:center; z-index:10; cursor:zoom-out; }
+#lightbox img { max-width:95vw; max-height:95vh; }
+.inventory { display:grid; grid-template-columns:repeat(auto-fill,minmax(280px,1fr)); gap:12px; }
+.inv-card { background:var(--card); border:1px solid var(--line); border-radius:8px; padding:12px; font-size:14px; }
+.inv-card small { color:var(--muted); word-break:break-all; }
+footer { color:var(--muted); font-size:12px; margin-top:40px; }
+@media print { header { background:none; color:#000; } header .meta { color:#333; } .filters { display:none; } details.tc { break-inside:avoid; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>Laporan QA{% if meta.module %} — {{ meta.module }}{% endif %}</h1>
+  <div class="meta">{{ meta.target }} · mode {{ meta.mode }} · environment {{ meta.environment }} · model {{ meta.model }}<br>
+    {{ meta.started_at }}{% if meta.finished_at %} s/d {{ meta.finished_at }}{% endif %} · status run: {{ meta.status }}{% if meta.note %} · {{ meta.note }}{% endif %}</div>
+</header>
+<main>
+{% if cases %}
+  <div class="counters">
+    <div class="counter">Total<b>{{ total }}</b></div>
+    {% for s in statuses %}<div class="counter"><span class="badge {{ s|status_class }}">{{ s }}</span><b>{{ counts.get(s, 0) }}</b></div>{% endfor %}
+  </div>
+  {% if findings %}
+  <section id="temuan">
+    <h2>Temuan ({{ findings|length }})</h2>
+    <ul>
+    {% for f in findings %}<li><a href="#{{ f.tc.id }}">{{ f.tc.id }}</a> — {{ f.tc.title }} <span class="badge {{ f.status|status_class }}">{{ f.status }}</span>{% if f.tc.severity %} · {{ f.tc.severity }}{% endif %}</li>{% endfor %}
+    </ul>
+  </section>
+  {% endif %}
+  <section>
+    <h2>Test Case</h2>
+    <div class="filters">
+      <label>Status <select id="f-status"><option value="">Semua</option>{% for s in statuses %}<option>{{ s }}</option>{% endfor %}<option>Belum dijalankan</option></select></label>
+      <label>Modul <select id="f-module"><option value="">Semua</option>{% for m in modules %}<option>{{ m }}</option>{% endfor %}</select></label>
+    </div>
+    {% for c in cases %}
+    <details class="tc" id="{{ c.tc.id }}" data-status="{{ c.status }}" data-module="{{ c.tc.module }}">
+      <summary><span class="badge {{ c.status|status_class }}">{{ c.status }}</span><b>{{ c.tc.id }}</b> {{ c.tc.title }}</summary>
+      <div class="tc-body">
+        <table class="kv">
+          <tr><th>Modul / Halaman</th><td>{{ c.tc.module }} / {{ c.tc.page or "-" }}</td></tr>
+          <tr><th>Tipe / Prioritas</th><td>{{ c.tc.type }} / {{ c.tc.priority }}</td></tr>
+          <tr><th>Pre-condition</th><td>{{ c.tc.precondition or "-" }}</td></tr>
+          <tr><th>Test data</th><td>{{ c.tc.test_data or "-" }}</td></tr>
+          <tr><th>Langkah</th><td>{% for s in c.tc.steps %}{{ loop.index }}. {{ s }}
+{% endfor %}</td></tr>
+          <tr><th>Expected</th><td>{{ c.tc.expected }} ({{ c.tc.expected_source }})</td></tr>
+          <tr><th>Actual</th><td>{{ c.tc.actual or "-" }}</td></tr>
+          <tr><th>Status AI</th><td>{{ c.tc.status_ai or "-" }}{% if c.tc.severity %} · {{ c.tc.severity }}{% endif %}</td></tr>
+          <tr><th>Status Final</th><td>{{ c.tc.status_final or "-" }}</td></tr>
+          {% if c.tc.reviewer_note %}<tr><th>Catatan reviewer</th><td>{{ c.tc.reviewer_note }}</td></tr>{% endif %}
+        </table>
+        {% if c.steps %}
+        <h3>Eksekusi</h3>
+        <ol class="steps">
+        {% for s in c.steps %}
+          <li value="{{ s.no }}">
+            <div>{{ s.text }}</div>
+            {% if s.thought %}<div class="thought">AI: {{ s.thought }}</div>{% endif %}
+            {% if s.guard != "allowed" %}<div class="warn">{{ s.guard }}</div>{% endif %}
+            {% if s.result not in ("ok", "skipped") %}<div class="warn">{{ s.result }}</div>{% endif %}
+            {% if s.signals %}<div class="signals">{% for sig in s.signals %}{{ sig }}<br>{% endfor %}</div>{% endif %}
+            {% if s.image %}<img class="shot" src="{{ s.image }}" alt="Langkah {{ s.no }}" loading="lazy">{% endif %}
+          </li>
+        {% endfor %}
+        </ol>
+        {% endif %}
+      </div>
+    </details>
+    {% endfor %}
+  </section>
+{% endif %}
+{% if inventory %}
+  <section>
+    <h2>Inventaris Fitur</h2>
+    <div class="inventory">
+    {% for i in inventory %}
+      <div class="inv-card"><b>{{ i.screen.module }}</b> — {{ i.screen.page_name }}{% if i.screen.public %} <span class="badge s-none">Publik</span>{% endif %}<br>
+        <small>{{ i.screen.url }}</small>
+        {% if i.screen.purpose %}<p>{{ i.screen.purpose }}</p>{% endif %}
+        {% if i.image %}<img class="shot" src="{{ i.image }}" alt="{{ i.screen.page_name }}" loading="lazy">{% endif %}
+      </div>
+    {% endfor %}
+    </div>
+  </section>
+{% endif %}
+  <footer>Dibuat oleh QA Agent pada {{ generated_at }}. Klik screenshot untuk memperbesar. Cetak ke PDF lewat menu Print browser.</footer>
+</main>
+<div id="lightbox"><img alt=""></div>
+<script>
+(function () {
+  var st = document.getElementById('f-status'), md = document.getElementById('f-module');
+  function apply() {
+    document.querySelectorAll('details.tc').forEach(function (d) {
+      var ok = (!st.value || d.dataset.status === st.value) && (!md.value || d.dataset.module === md.value);
+      d.style.display = ok ? '' : 'none';
+    });
+  }
+  if (st) { st.addEventListener('change', apply); md.addEventListener('change', apply); }
+  var lb = document.getElementById('lightbox'), lbImg = lb.querySelector('img');
+  document.addEventListener('click', function (e) {
+    if (e.target.classList && e.target.classList.contains('shot')) { lbImg.src = e.target.src; lb.style.display = 'flex'; }
+    else if (e.target === lb || e.target === lbImg) { lb.style.display = 'none'; }
+  });
+  if (location.hash) {
+    var target = document.getElementById(decodeURIComponent(location.hash.slice(1)));
+    if (target && target.tagName === 'DETAILS') { target.open = true; target.scrollIntoView(); }
+  }
+})();
+</script>
+</body>
+</html>
