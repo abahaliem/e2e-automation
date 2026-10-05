@@ -63,6 +63,34 @@ def test_click_requires_element(driver):
     assert not result.ok and "butuh elemen" in result.error
 
 
+def test_password_placeholder_only_fills_password_fields(driver):
+    # Review #6: {{password}} tidak boleh diisi ke field biasa (akan terlihat di layar & laporan)
+    driver.goto("/login")
+    obs = driver.observe()
+    driver.execute(Action(action="type", value="{{password}}"), find(obs, "input", "Email"))
+    assert find(driver.observe(), "input", "Email").value == "{{password}}"
+
+
+# Dengan service_workers="block", Playwright membuat register() resolve ke undefined dan sw.js tidak pernah diambil.
+SW_JS = "async () => { try { const r = await navigator.serviceWorker.register('/sw.js'); return r ? 'ok' : 'blocked'; } catch (e) { return 'blocked'; } }"
+
+
+def test_service_workers_blocked_in_production(demo):
+    # Review #2: request dari Service Worker tidak melewati context.route, jadi SW harus diblok
+    dev = make(demo)
+    try:
+        dev.goto("/login")
+        assert dev.page.evaluate(SW_JS) == "ok"
+    finally:
+        dev.stop()
+    prod = make(demo, request_filter=Guard("production", ["127.0.0.1"]).should_block_request)
+    try:
+        prod.goto("/login")
+        assert prod.page.evaluate(SW_JS) == "blocked"
+    finally:
+        prod.stop()
+
+
 def test_stale_element_returns_error_not_crash(demo):
     d = make(demo, action_timeout_ms=1500)
     try:
@@ -82,7 +110,9 @@ def test_production_filter_blocks_writes_but_allows_login(demo):
     guard = Guard("production", ["127.0.0.1"])
     d = make(demo, request_filter=guard.should_block_request)
     try:
+        d.login_mode = True  # endpoint login hanya dibuka selama alur login (review #3)
         login(d)
+        d.login_mode = False
         assert not d.observe().is_login_screen  # POST /login diizinkan
         d.goto("/reports")
         result = d.execute(Action(action="click"), find(d.observe(), "button", "Proses Ulang"))

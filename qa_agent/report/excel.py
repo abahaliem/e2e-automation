@@ -6,6 +6,7 @@ from datetime import datetime
 from pathlib import Path
 
 from openpyxl import Workbook, load_workbook
+from openpyxl.cell.cell import ILLEGAL_CHARACTERS_RE
 from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.worksheet.datavalidation import DataValidation
 from openpyxl.worksheet.worksheet import Worksheet
@@ -41,6 +42,18 @@ def _save(wb: Workbook, path: Path) -> None:
         wb.save(path)
     except PermissionError as e:
         raise ReportLockedError(f"Tidak bisa menulis {Path(path).name}. Tutup file itu di Excel lalu jalankan ulang perintahnya.") from e
+
+
+def _clean(value: object) -> object:
+    return ILLEGAL_CHARACTERS_RE.sub("", value) if isinstance(value, str) else value
+
+
+def _append(ws: Worksheet, values: list | tuple) -> None:
+    """Tambah baris: karakter kontrol dibuang, teks berawalan '=' disimpan sebagai teks (bukan formula)."""
+    ws.append([_clean(v) for v in values])
+    for cell in ws[ws.max_row]:
+        if isinstance(cell.value, str) and cell.value.startswith("="):
+            cell.data_type = "s"
 
 
 def _header(ws: Worksheet, headers: list[str]) -> None:
@@ -85,17 +98,17 @@ def _write_summary(ws: Worksheet, meta: RunMeta, cases: list[QaTestCase]) -> Non
     if meta.note:
         rows.append(("Catatan", meta.note))
     for row in rows:
-        ws.append(row)
+        _append(ws, row)
     if cases:
-        ws.append([])
-        ws.append(["Status", "Jumlah (AI)", "Jumlah (Final)"])
+        _append(ws, [])
+        _append(ws, ["Status", "Jumlah (AI)", "Jumlah (Final)"])
         ai = Counter(c.status_ai for c in cases)
         final = Counter(c.effective_status for c in cases)
         for status in STATUSES:
-            ws.append([status, ai.get(status, 0), final.get(status, 0)])
-        ws.append(["Belum dijalankan", ai.get(None, 0), final.get(None, 0)])
-        ws.append(["Total", len(cases), len(cases)])
-        ws.append(["Pass rate", f"{round(100 * final.get('Pass', 0) / len(cases))}%"])
+            _append(ws, [status, ai.get(status, 0), final.get(status, 0)])
+        _append(ws, ["Belum dijalankan", ai.get(None, 0), final.get(None, 0)])
+        _append(ws, ["Total", len(cases), len(cases)])
+        _append(ws, ["Pass rate", f"{round(100 * final.get('Pass', 0) / len(cases))}%"])
     for cell in ws["A"]:
         cell.font = Font(bold=True)
     ws.column_dimensions["A"].width = 20
@@ -106,7 +119,7 @@ def _write_summary(ws: Worksheet, meta: RunMeta, cases: list[QaTestCase]) -> Non
 def _write_cases(ws: Worksheet, cases: list[QaTestCase], steps: list[StepRecord]) -> None:
     _header(ws, TC_HEADERS)
     for tc in cases:
-        ws.append([tc.id, tc.module, tc.page, tc.title, tc.type, tc.priority, tc.precondition, tc.test_data,
+        _append(ws, [tc.id, tc.module, tc.page, tc.title, tc.type, tc.priority, tc.precondition, tc.test_data,
                    steps_text(tc.steps), tc.expected, tc.expected_source, tc.actual, tc.status_ai or "",
                    tc.status_final or "", tc.reviewer_note, None, None])
         row = ws.max_row
@@ -144,7 +157,7 @@ def _write_findings(ws: Worksheet, cases: list[QaTestCase], steps: list[StepReco
             for s in r.signals:
                 if s.kind in ("http_error", "page_error", "console_error") and signal_text(s) not in signals:
                     signals.append(signal_text(s))
-        ws.append([f"BUG-{n:03d}", tc.id, tc.title, tc.severity or "", tc.effective_status, steps_text(repro),
+        _append(ws, [f"BUG-{n:03d}", tc.id, tc.title, tc.severity or "", tc.effective_status, steps_text(repro),
                    tc.expected, tc.actual, "\n".join(signals[:5]), None])
         row = ws.max_row
         for cell in ws[row]:
@@ -162,7 +175,7 @@ def _write_inventory(ws: Worksheet, app_map: AppMap) -> None:
         forms = "\n".join(
             f"{f.get('name', 'Form')}: " + ", ".join(f"{fd.get('label', '?')} ({fd.get('type', '?')})" for fd in f.get("fields", []))
             for f in s.forms)
-        ws.append([s.module, s.page_name, s.url, s.purpose, forms, ", ".join(s.actions), "Publik" if s.public else "Login", None])
+        _append(ws, [s.module, s.page_name, s.url, s.purpose, forms, ", ".join(s.actions), "Publik" if s.public else "Login", None])
         row = ws.max_row
         for cell in ws[row]:
             cell.alignment = WRAP
@@ -191,7 +204,7 @@ def write_cases_xlsx(path: Path, cases: list[QaTestCase]) -> None:
     ws.title = "Test Cases"
     _header(ws, PLAN_HEADERS)
     for tc in cases:
-        ws.append([tc.id, tc.module, tc.page, tc.title, tc.type, tc.priority, tc.precondition, tc.test_data,
+        _append(ws, [tc.id, tc.module, tc.page, tc.title, tc.type, tc.priority, tc.precondition, tc.test_data,
                    steps_text(tc.steps), tc.expected, tc.expected_source, tc.start_url])
         for cell in ws[ws.max_row]:
             cell.alignment = WRAP

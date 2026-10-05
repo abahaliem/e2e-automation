@@ -5,6 +5,7 @@ from qa_agent.drivers.base import DriverCrashed
 from qa_agent.evidence import Masker, RunStore, SECRET_MASK
 from qa_agent.guard import Guard
 from qa_agent.llm.fake import FakeLLM
+from qa_agent.models import Signal
 from tests.fakes import FakeDriver, act, el, screen, url
 
 LOGIN = screen("login", el(1, "input", "Email"), el(2, "input", "Password", input_type="password"), el(3, "button", "Masuk"))
@@ -132,3 +133,14 @@ def test_relogin_not_repeated(tmp_path):
     loop, _, _ = make(tmp_path, driver, [act(action="click", element=1), act(action="blocked", reason="tetap di login")], relogin=calls.append)
     out = loop.run("TC-1", "x")
     assert calls == [url("home")] and out.final == "blocked"
+
+
+def test_secrets_in_location_signals_and_values_are_masked(tmp_path):
+    # Review #6: password bisa muncul di URL (form GET), sinyal, atau value field ("lihat password")
+    leaky = screen("akun?password=s3cret!", el(1, "input", "Password", input_type="text", value="s3cret!"),
+                   signals=(Signal(kind="http_error", message="HTTP 500", status=500, method="GET", url=url("x?password=s3cret!")),))
+    driver = FakeDriver([leaky], leaky.location)
+    loop, llm, store = make(tmp_path, driver, [act(action="done", status="fail", actual="password terlihat")])
+    loop.run("TC-1", "x")
+    assert all("s3cret!" not in m.text for _, msgs in llm.calls for m in msgs)
+    assert "s3cret!" not in store.steps_path.read_text(encoding="utf-8")

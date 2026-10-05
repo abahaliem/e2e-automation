@@ -59,3 +59,18 @@ def test_step_record_roundtrip_unicode():
     )
     back = StepRecord.model_validate_json(rec.model_dump_json())
     assert back == rec
+
+
+def test_password_field_on_regular_form_is_not_login():
+    # Review #1: form "Tambah Pengguna" dengan field password bukan halaman login
+    add_user = Observation(location="http://a/users/new", elements=[
+        Element(index=1, role="input", name="Email"),
+        Element(index=2, role="input", name="Password", input_type="password"),
+        Element(index=3, role="button", name="Simpan"),
+    ])
+    assert add_user.is_login_screen is False
+    login_by_button = Observation(location="http://a/", elements=[
+        Element(index=1, role="input", name="Password", input_type="password"),
+        Element(index=2, role="button", name="Sign in"),
+    ])
+    assert login_by_button.is_login_screen is True

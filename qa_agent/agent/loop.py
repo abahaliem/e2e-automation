@@ -97,6 +97,7 @@ class AgentLoop:
 
             signals.extend(obs.signals)
             message = prompts.step_message(goal, obs, history[-HISTORY_WINDOW:], notes, self.vision)
+            message.text = self.masker.mask(message.text) or ""
             notes = []
             try:
                 action = self._decide(system, message, len(obs.elements))
@@ -182,7 +183,7 @@ class AgentLoop:
             tc_id=tc_id,
             step_no=step_no,
             timestamp=now_iso(),
-            location=obs.location,
+            location=self.masker.mask(obs.location) or "",
             fingerprint=obs.fingerprint,
             thought=self.masker.mask(action.thought) if action else "",
             action=action.action if action else "invalid",
@@ -191,6 +192,7 @@ class AgentLoop:
             expect=action.expect if action else "",
             guard=guard,
             result=self.masker.mask(result) or "",
-            signals=obs.signals,
+            signals=[s.model_copy(update={"message": self.masker.mask(s.message), "url": self.masker.mask(s.url)})
+                     for s in obs.signals],
             screenshot=screenshot,
         ))

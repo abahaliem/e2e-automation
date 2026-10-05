@@ -69,3 +69,14 @@ def test_scroll_defaults_down():
 
 def test_extract_json_for_plan_objects():
     assert extract_json('```\n{"test_cases": []}\n```') == {"test_cases": []}
+
+
+def test_dangling_think_close_with_braces_in_reasoning():
+    # Review #9: endpoint yang mem-prefill <think> hanya mengirim penutupnya
+    a = parse_action('Isi {{username}} dulu, lalu {"x"}</think>\n{"action": "wait", "value": "1"}', 0)
+    assert a.action == "wait"
+
+
+def test_multiple_json_objects_takes_last_with_action():
+    a = parse_action('Contoh: {"contoh": 1}\nJawaban: {"action": "back"}', 0)
+    assert a.action == "back"

@@ -35,8 +35,10 @@ def test_build_runtime_dev(tmp_path, env):
 
 def test_build_runtime_production_installs_request_filter(tmp_path, env):
     rt = build_runtime(cfg(), RunStore(tmp_path / "run"), tmp_path, environment="production", llm=FakeLLM([]))
-    assert rt.driver.request_filter("POST", "https://app-dev.kantor.local/api/users") is True
-    assert rt.driver.request_filter("POST", "https://app-dev.kantor.local/login") is False
+    assert rt.driver.request_filter("POST", "https://app-dev.kantor.local/api/users", False) is True
+    assert rt.driver.request_filter("POST", "https://app-dev.kantor.local/login", True) is False
+    assert rt.driver.request_filter("POST", "https://app-dev.kantor.local/login", False) is True
+    assert rt.driver.tracked_domains == ["app-dev.kantor.local"]
 
 
 def test_missing_credentials(tmp_path, monkeypatch):

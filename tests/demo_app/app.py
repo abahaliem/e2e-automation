@@ -193,6 +193,10 @@ def create_app() -> Flask:
     def rebuild_reports():
         return redirect("/reports?done=1")
 
+    @app.get("/sw.js")
+    def service_worker():
+        return app.response_class("self.addEventListener('fetch', () => {});", mimetype="application/javascript")
+
     @app.get("/__test__/writes")
     def test_writes():
         return jsonify(count=len(state.writes), requests=state.writes)

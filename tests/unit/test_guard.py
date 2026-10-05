@@ -89,12 +89,22 @@ def test_should_block_request_production_only():
     assert PROD.should_block_request("POST", "https://app.test/api/users")
     assert PROD.should_block_request("delete", "https://app.test/api/users/1")
     assert not PROD.should_block_request("GET", "https://app.test/api/users")
-    assert not PROD.should_block_request("POST", "https://app.test/login")
-    assert not PROD.should_block_request("POST", "https://app.test/api/auth/token")
+    assert not PROD.should_block_request("POST", "https://app.test/login", login_active=True)
+    assert not PROD.should_block_request("POST", "https://app.test/api/auth/token", login_active=True)
     assert not DEV.should_block_request("POST", "https://app.test/api/users")
 
 
-def test_custom_login_endpoints_replace_heuristic():
+def test_login_endpoints_only_open_during_login():
+    # Review #3: di luar alur login, endpoint auth/token/session tetap diblok
+    assert PROD.should_block_request("POST", "https://app.test/login")
+    assert PROD.should_block_request("POST", "https://app.test/auth/admin/realms/x/users")
+    assert PROD.should_block_request("POST", "https://app.test/api/tokens")
+
+
+def test_custom_login_endpoints_match_by_path_prefix():
     g = Guard("production", ["app.test"], login_endpoints=["/api/v2/masuk"])
-    assert not g.should_block_request("POST", "https://app.test/api/v2/masuk")
-    assert g.should_block_request("POST", "https://app.test/login")
+    assert not g.should_block_request("POST", "https://app.test/api/v2/masuk", login_active=True)
+    assert not g.should_block_request("POST", "https://app.test/api/v2/masuk/verify", login_active=True)
+    assert g.should_block_request("POST", "https://app.test/login", login_active=True)
+    h = Guard("production", ["app.test"], login_endpoints=["/login"])
+    assert h.should_block_request("POST", "https://app.test/login-history/delete", login_active=True)
