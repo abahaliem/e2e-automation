@@ -1,0 +1,20 @@
+# Config untuk evaluasi terhadap aplikasi demo lokal (python -m tests.demo_app).
+# Akun demo (DEMO_USER / DEMO_PASS) adalah nilai test milik proyek ini: admin@demo.local / rahasia123.
+target:
+  platform: web
+  url: http://127.0.0.1:5055
+environment: dev
+accounts:
+  - role: admin
+    username_env: DEMO_USER
+    password_env: DEMO_PASS
+llm:
+  provider: openai_compatible
+  base_url: http://192.168.151.121/v1
+  model: z-ai/glm-5.3-flash
+  api_key_env: OFFICE_AI_KEY
+  vision: true
+limits:
+  explore_max_minutes: 15
+browser:
+  headless: false
