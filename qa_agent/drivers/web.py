@@ -230,3 +230,55 @@ class WebDriver:
                 raise DriverCrashed(_first_line(e)) from e
             raise
         return imaging.highlight(png, highlight.bbox) if highlight is not None else png
+
+    # ---------- aksi ----------
+    def set_credentials(self, username: str, password: str) -> None:
+        self._credentials = {"{{username}}": username, "{{password}}": password}
+
+    def _resolve(self, text: str | None) -> str:
+        text = text or ""
+        for placeholder, real in self._credentials.items():
+            text = text.replace(placeholder, real)
+        return text
+
+    def _locator(self, element: Element) -> Any:
+        return self._frames[element.frame].locator(f'[data-qa-idx="{element.index}"]').first
+
+    def _select(self, locator: Any, value: str) -> None:
+        try:
+            locator.select_option(label=value, timeout=3000)
+        except PlaywrightError:
+            locator.select_option(value=value)
+
+    def execute(self, action: Action, element: Element | None) -> ActionResult:
+        kind = action.action
+        if kind in ("click", "type", "select"):
+            if element is None:
+                return ActionResult(ok=False, error=f"Aksi {kind} butuh elemen")
+            if element.frame >= len(self._frames):
+                return ActionResult(ok=False, error="Elemen berasal dari observasi lama; observasi ulang")
+        try:
+            if kind == "click":
+                self._locator(element).click()
+            elif kind == "type":
+                self._locator(element).fill(self._resolve(action.value))
+            elif kind == "select":
+                self._select(self._locator(element), action.value or "")
+            elif kind == "scroll":
+                self.page.mouse.wheel(0, -600 if action.value == "up" else 600)
+            elif kind == "back":
+                self.page.go_back(wait_until="domcontentloaded")
+            elif kind == "navigate":
+                self.goto(action.value or "/")
+            elif kind == "wait":
+                self.page.wait_for_timeout(min(float(action.value or 2), 10.0) * 1000)
+            self._settle()
+            return ActionResult(ok=True)
+        except PlaywrightTimeout as e:
+            return ActionResult(ok=False, error=f"Timeout: {_first_line(e)}")
+        except PlaywrightError as e:
+            return ActionResult(ok=False, error=_first_line(e), fatal=_is_fatal(e))
+        except DriverCrashed as e:
+            return ActionResult(ok=False, error=str(e), fatal=True)
+        except ValueError as e:
+            return ActionResult(ok=False, error=f"Nilai tidak valid: {e}")
