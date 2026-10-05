@@ -1,0 +1,307 @@
+from __future__ import annotations
+
+from pathlib import Path
+from typing import Any, Callable
+from urllib.parse import urljoin, urlsplit
+
+from playwright.sync_api import Error as PlaywrightError
+from playwright.sync_api import TimeoutError as PlaywrightTimeout
+from playwright.sync_api import sync_playwright
+
+from qa_agent import imaging
+from qa_agent.drivers.base import DriverCrashed
+from qa_agent.drivers.web_dom import EXTRACT_JS, UI_ERROR_JS, to_element
+from qa_agent.models import Action, ActionResult, Element, Observation, Signal
+from qa_agent.orchestrator.fingerprint import fingerprint
+
+TRACKED_RESOURCES = {"document", "xhr", "fetch"}
+BENIGN_JS_ERRORS = ("ResizeObserver loop",)
+_FATAL_MARKERS = ("has been closed", "Target closed", "Browser closed")
+
+
+def _first_line(e: Exception) -> str:
+    lines = str(e).strip().splitlines()
+    return (lines[0] if lines else type(e).__name__)[:300]
+
+
+def _is_fatal(e: Exception) -> bool:
+    return any(marker in str(e) for marker in _FATAL_MARKERS)
+
+
+def is_tracked_url(url: str, domains: list[str]) -> bool:
+    """Hanya error dari domain aplikasi yang dihitung (bukan analytics/CDN/Sentry pihak ketiga)."""
+    host = (urlsplit(url).hostname or "").lower()
+    return any(host == d or host.endswith("." + d) for d in domains)
+
+
+def is_benign_js_error(message: str) -> bool:
+    return any(marker in message for marker in BENIGN_JS_ERRORS)
+
+
+def _origin(url: str) -> str:
+    parts = urlsplit(url)
+    return f"{parts.scheme}://{parts.netloc}"
+
+
+class WebDriver:
+    """Driver web berbasis Playwright (sync API)."""
+
+    def __init__(
+        self,
+        base_url: str,
+        *,
+        headless: bool = False,
+        viewport: tuple[int, int] = (1366, 768),
+        request_filter: Callable[[str, str, bool], bool] | None = None,
+        tracked_domains: list[str] | None = None,
+        max_elements: int = 80,
+        action_timeout_ms: int = 15_000,
+        navigation_timeout_ms: int = 30_000,
+    ) -> None:
+        self.base_url = base_url.rstrip("/")
+        self.headless = headless
+        self.viewport = viewport
+        self.request_filter = request_filter
+        self.tracked_domains = [d.lower() for d in (tracked_domains or [urlsplit(base_url).hostname or ""])]
+        self.login_mode = False  # True hanya selama alur login (endpoint login dibuka di production)
+        self.max_elements = max_elements
+        self.action_timeout_ms = action_timeout_ms
+        self.navigation_timeout_ms = navigation_timeout_ms
+        self.blocked_requests: list[str] = []
+        self._pw: Any = None
+        self._browser: Any = None
+        self._context: Any = None
+        self._page: Any = None
+        self._frames: list[Any] = []
+        self._signals: list[Signal] = []
+        self._credentials: dict[str, str] = {}
+
+    # ---------- siklus hidup ----------
+    def start(self) -> None:
+        self._pw = sync_playwright().start()
+        self._browser = self._pw.chromium.launch(headless=self.headless)
+
+    def stop(self) -> None:
+        for closable in (self._context, self._browser):
+            if closable is not None:
+                try:
+                    closable.close()
+                except PlaywrightError:
+                    pass
+        if self._pw is not None:
+            self._pw.stop()
+        self._pw = self._browser = self._context = self._page = None
+
+    def new_session(self, auth_state: Path | None = None) -> None:
+        if self._browser is None:
+            raise DriverCrashed("Browser belum dijalankan (panggil start())")
+        if self._context is not None:
+            try:
+                self._context.close()
+            except PlaywrightError:
+                pass
+        state = str(auth_state) if auth_state and Path(auth_state).exists() else None
+        width, height = self.viewport
+        # Request dari Service Worker tidak melewati context.route → blok SW saat filter production aktif
+        service_workers = "block" if self.request_filter is not None else "allow"
+        self._context = self._browser.new_context(viewport={"width": width, "height": height}, storage_state=state,
+                                                  service_workers=service_workers)
+        if self.request_filter is not None:
+            self._context.route("**/*", self._route)
+        page = self._context.new_page()
+        page.set_default_timeout(self.action_timeout_ms)
+        page.set_default_navigation_timeout(self.navigation_timeout_ms)
+        page.on("console", self._on_console)
+        page.on("pageerror", self._on_page_error)
+        page.on("response", self._on_response)
+        self._page = page
+        self._signals = []
+        self._frames = []
+
+    def save_auth_state(self, path: Path) -> None:
+        path = Path(path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        self._context.storage_state(path=str(path))
+
+    @property
+    def page(self) -> Any:
+        if self._page is None:
+            raise DriverCrashed("Sesi browser belum dibuat atau sudah ditutup")
+        return self._page
+
+    @property
+    def current_url(self) -> str:
+        return self.page.url
+
+    # ---------- event ----------
+    def _route(self, route: Any) -> None:
+        request = route.request
+        if self.request_filter is not None and self.request_filter(request.method, request.url, self.login_mode):
+            self.blocked_requests.append(f"{request.method} {request.url}")
+            self._signals.append(Signal(kind="blocked_request", message="Request diblok mode production",
+                                        method=request.method, url=request.url))
+            route.abort("blockedbyclient")
+        else:
+            route.continue_()
+
+    def _on_console(self, msg: Any) -> None:
+        if msg.type == "error":
+            self._signals.append(Signal(kind="console_error", message=msg.text[:300]))
+
+    def _on_page_error(self, error: Any) -> None:
+        message = str(error)
+        if not is_benign_js_error(message):
+            self._signals.append(Signal(kind="page_error", message=message[:300]))
+
+    def _on_response(self, response: Any) -> None:
+        if (response.status >= 400 and response.request.resource_type in TRACKED_RESOURCES
+                and is_tracked_url(response.url, self.tracked_domains)):
+            self._signals.append(Signal(kind="http_error", message=f"HTTP {response.status}", status=response.status,
+                                        url=response.url, method=response.request.method))
+
+    def _drain_signals(self) -> list[Signal]:
+        signals, self._signals = self._signals, []
+        return signals
+
+    # ---------- navigasi & observasi ----------
+    def goto(self, location: str) -> None:
+        url = urljoin(self.base_url + "/", location)
+        for attempt in range(2):  # timeout navigasi: coba 1× lagi (spec §9)
+            try:
+                self.page.goto(url, wait_until="domcontentloaded")
+                break
+            except PlaywrightTimeout:
+                if attempt == 1:
+                    raise
+            except PlaywrightError as e:
+                if _is_fatal(e):
+                    raise DriverCrashed(_first_line(e)) from e
+                raise
+        self._settle()
+
+    def _settle(self) -> None:
+        try:
+            self.page.wait_for_load_state("networkidle", timeout=3000)
+        except PlaywrightTimeout:
+            pass
+        except PlaywrightError as e:
+            if _is_fatal(e):
+                raise DriverCrashed(_first_line(e)) from e
+
+    def _scan_frames(self) -> list[tuple[Any, tuple[float, float]]]:
+        main = self.page.main_frame
+        frames: list[tuple[Any, tuple[float, float]]] = [(main, (0.0, 0.0))]
+        origin = _origin(main.url)
+        for child in main.child_frames:
+            if _origin(child.url) != origin:
+                continue  # iframe lintas domain tidak didukung
+            try:
+                box = child.frame_element().bounding_box()
+            except PlaywrightError:
+                continue
+            if box:
+                frames.append((child, (box["x"], box["y"])))
+        return frames
+
+    def _observe_once(self) -> Observation:
+        self._settle()
+        elements: list[Element] = []
+        frames: list[Any] = []
+        for frame, offset in self._scan_frames():
+            remaining = self.max_elements - len(elements)
+            if remaining <= 0:
+                break
+            raws = frame.evaluate(EXTRACT_JS, [remaining, len(elements) + 1])
+            frame_index = len(frames)
+            frames.append(frame)
+            elements.extend(to_element(raw, frame_index, offset) for raw in raws)
+        self._frames = frames
+        ui_errors = self.page.evaluate(UI_ERROR_JS)
+        png = self.page.screenshot()
+        url = self.page.url
+        signals = self._drain_signals() + [Signal(kind="ui_error", message=text) for text in ui_errors]
+        return Observation(
+            location=url,
+            title=self.page.title(),
+            elements=elements,
+            signals=signals,
+            screenshot_annotated=imaging.annotate(png, elements),
+            fingerprint=fingerprint(url, elements),
+        )
+
+    def observe(self) -> Observation:
+        last_error: Exception | None = None
+        for _ in range(2):
+            try:
+                return self._observe_once()
+            except PlaywrightError as e:  # mis. "Execution context was destroyed" saat navigasi
+                if _is_fatal(e):
+                    raise DriverCrashed(_first_line(e)) from e
+                last_error = e
+                self._settle()
+        assert last_error is not None
+        raise last_error
+
+    def screenshot(self, highlight: Element | None = None) -> bytes:
+        try:
+            png = self.page.screenshot()
+        except PlaywrightError as e:
+            if _is_fatal(e):
+                raise DriverCrashed(_first_line(e)) from e
+            raise
+        return imaging.highlight(png, highlight.bbox) if highlight is not None else png
+
+    # ---------- aksi ----------
+    def set_credentials(self, username: str, password: str) -> None:
+        self._credentials = {"{{username}}": username, "{{password}}": password}
+
+    def _resolve(self, text: str | None, *, allow_password: bool) -> str:
+        """Ganti placeholder kredensial. {{password}} hanya diisi ke field bertipe password."""
+        text = text or ""
+        for placeholder, real in self._credentials.items():
+            if placeholder == "{{password}}" and not allow_password:
+                continue
+            text = text.replace(placeholder, real)
+        return text
+
+    def _locator(self, element: Element) -> Any:
+        return self._frames[element.frame].locator(f'[data-qa-idx="{element.index}"]').first
+
+    def _select(self, locator: Any, value: str) -> None:
+        try:
+            locator.select_option(label=value, timeout=3000)
+        except PlaywrightError:
+            locator.select_option(value=value)
+
+    def execute(self, action: Action, element: Element | None) -> ActionResult:
+        kind = action.action
+        if kind in ("click", "type", "select"):
+            if element is None:
+                return ActionResult(ok=False, error=f"Aksi {kind} butuh elemen")
+            if element.frame >= len(self._frames):
+                return ActionResult(ok=False, error="Elemen berasal dari observasi lama; observasi ulang")
+        try:
+            if kind == "click":
+                self._locator(element).click()
+            elif kind == "type":
+                self._locator(element).fill(self._resolve(action.value, allow_password=element.input_type == "password"))
+            elif kind == "select":
+                self._select(self._locator(element), action.value or "")
+            elif kind == "scroll":
+                self.page.mouse.wheel(0, -600 if action.value == "up" else 600)
+            elif kind == "back":
+                self.page.go_back(wait_until="domcontentloaded")
+            elif kind == "navigate":
+                self.goto(action.value or "/")
+            elif kind == "wait":
+                self.page.wait_for_timeout(min(float(action.value or 2), 10.0) * 1000)
+            self._settle()
+            return ActionResult(ok=True)
+        except PlaywrightTimeout as e:
+            return ActionResult(ok=False, error=f"Timeout: {_first_line(e)}")
+        except PlaywrightError as e:
+            return ActionResult(ok=False, error=_first_line(e), fatal=_is_fatal(e))
+        except DriverCrashed as e:
+            return ActionResult(ok=False, error=str(e), fatal=True)
+        except ValueError as e:
+            return ActionResult(ok=False, error=f"Nilai tidak valid: {e}")
