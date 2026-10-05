@@ -80,6 +80,7 @@ SIG500 = Signal(kind="http_error", message="HTTP 500", status=500)
 
 @pytest.mark.parametrize("outcome, tc, expected", [
     (LoopOutcome(final="done", status="pass", signals=[SIG500]), TC_AI, ("Fail", "Major")),
+    (LoopOutcome(final="done", status="pass", signals=[Signal(kind="blocked_request", message="x", method="POST", url="u"), SIG500]), TC_AI, ("Skipped", None)),
     (LoopOutcome(final="done", status="pass", signals=[Signal(kind="page_error", message="x")]), TC_AI, ("Fail", "Major")),
     (LoopOutcome(final="done", status="pass", signals=[Signal(kind="http_error", message="x", status=404)]), TC_AI, ("Pass", None)),
     (LoopOutcome(final="done", status="fail", severity="Critical"), TC_PRD, ("Fail", "Critical")),

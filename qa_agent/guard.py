@@ -98,11 +98,14 @@ class Guard:
             return _blocked("Mode production: aksi berisiko tinggi (mengubah data) diblok")
         return GuardDecision(allowed=True, risk=risk)
 
-    def should_block_request(self, method: str, url: str) -> bool:
+    def should_block_request(self, method: str, url: str, login_active: bool = False) -> bool:
+        """Production: blok semua request non-GET. Endpoint login hanya dibuka selama alur login berjalan."""
         if not self.production or method.upper() in SAFE_METHODS:
             return False
-        path = urlsplit(url).path.lower()
+        if not login_active:
+            return True
+        path = urlsplit(url).path.lower().rstrip("/")
         if self.login_endpoints:
-            return not any(ep in path for ep in self.login_endpoints)
+            return not any(path == ep.rstrip("/") or path.startswith(ep.rstrip("/") + "/") for ep in self.login_endpoints)
         segments = {s for s in path.split("/") if s}
         return not (segments & LOGIN_SEGMENTS)

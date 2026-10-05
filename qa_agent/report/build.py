@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import zipfile
 from pathlib import Path
 
 from qa_agent.evidence import RunStore
@@ -20,11 +21,17 @@ def import_review(store: RunStore) -> int:
     if not store.report_xlsx.exists():
         return 0
     review = read_review(store.report_xlsx)
-    store.write_review(review)
+    if review:  # laporan explore tidak punya sheet Test Cases; jangan timpa review.json dengan kosong
+        store.write_review(review)
     return sum(1 for r in review.values() if r["status_final"] or r["reviewer_note"])
 
 
 def build_reports(store: RunStore) -> tuple[Path, Path]:
+    # Editan reviewer di report.xlsx yang belum diimpor tidak boleh hilang saat laporan ditulis ulang.
+    try:
+        import_review(store)
+    except (ValueError, KeyError, OSError, zipfile.BadZipFile):
+        pass  # isi review tidak valid/tidak terbaca: pakai review.json terakhir; `qa-agent report` menampilkan error-nya
     meta = store.read_meta()
     cases = store.read_testcases()
     apply_review(cases, store.read_review())

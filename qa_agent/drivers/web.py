@@ -15,6 +15,7 @@ from qa_agent.models import Action, ActionResult, Element, Observation, Signal
 from qa_agent.orchestrator.fingerprint import fingerprint
 
 TRACKED_RESOURCES = {"document", "xhr", "fetch"}
+BENIGN_JS_ERRORS = ("ResizeObserver loop",)
 _FATAL_MARKERS = ("has been closed", "Target closed", "Browser closed")
 
 
@@ -25,6 +26,16 @@ def _first_line(e: Exception) -> str:
 
 def _is_fatal(e: Exception) -> bool:
     return any(marker in str(e) for marker in _FATAL_MARKERS)
+
+
+def is_tracked_url(url: str, domains: list[str]) -> bool:
+    """Hanya error dari domain aplikasi yang dihitung (bukan analytics/CDN/Sentry pihak ketiga)."""
+    host = (urlsplit(url).hostname or "").lower()
+    return any(host == d or host.endswith("." + d) for d in domains)
+
+
+def is_benign_js_error(message: str) -> bool:
+    return any(marker in message for marker in BENIGN_JS_ERRORS)
 
 
 def _origin(url: str) -> str:
@@ -41,7 +52,8 @@ class WebDriver:
         *,
         headless: bool = False,
         viewport: tuple[int, int] = (1366, 768),
-        request_filter: Callable[[str, str], bool] | None = None,
+        request_filter: Callable[[str, str, bool], bool] | None = None,
+        tracked_domains: list[str] | None = None,
         max_elements: int = 80,
         action_timeout_ms: int = 15_000,
         navigation_timeout_ms: int = 30_000,
@@ -50,6 +62,8 @@ class WebDriver:
         self.headless = headless
         self.viewport = viewport
         self.request_filter = request_filter
+        self.tracked_domains = [d.lower() for d in (tracked_domains or [urlsplit(base_url).hostname or ""])]
+        self.login_mode = False  # True hanya selama alur login (endpoint login dibuka di production)
         self.max_elements = max_elements
         self.action_timeout_ms = action_timeout_ms
         self.navigation_timeout_ms = navigation_timeout_ms
@@ -88,7 +102,10 @@ class WebDriver:
                 pass
         state = str(auth_state) if auth_state and Path(auth_state).exists() else None
         width, height = self.viewport
-        self._context = self._browser.new_context(viewport={"width": width, "height": height}, storage_state=state)
+        # Request dari Service Worker tidak melewati context.route → blok SW saat filter production aktif
+        service_workers = "block" if self.request_filter is not None else "allow"
+        self._context = self._browser.new_context(viewport={"width": width, "height": height}, storage_state=state,
+                                                  service_workers=service_workers)
         if self.request_filter is not None:
             self._context.route("**/*", self._route)
         page = self._context.new_page()
@@ -119,7 +136,7 @@ class WebDriver:
     # ---------- event ----------
     def _route(self, route: Any) -> None:
         request = route.request
-        if self.request_filter is not None and self.request_filter(request.method, request.url):
+        if self.request_filter is not None and self.request_filter(request.method, request.url, self.login_mode):
             self.blocked_requests.append(f"{request.method} {request.url}")
             self._signals.append(Signal(kind="blocked_request", message="Request diblok mode production",
                                         method=request.method, url=request.url))
@@ -132,10 +149,13 @@ class WebDriver:
             self._signals.append(Signal(kind="console_error", message=msg.text[:300]))
 
     def _on_page_error(self, error: Any) -> None:
-        self._signals.append(Signal(kind="page_error", message=str(error)[:300]))
+        message = str(error)
+        if not is_benign_js_error(message):
+            self._signals.append(Signal(kind="page_error", message=message[:300]))
 
     def _on_response(self, response: Any) -> None:
-        if response.status >= 400 and response.request.resource_type in TRACKED_RESOURCES:
+        if (response.status >= 400 and response.request.resource_type in TRACKED_RESOURCES
+                and is_tracked_url(response.url, self.tracked_domains)):
             self._signals.append(Signal(kind="http_error", message=f"HTTP {response.status}", status=response.status,
                                         url=response.url, method=response.request.method))
 
@@ -235,9 +255,12 @@ class WebDriver:
     def set_credentials(self, username: str, password: str) -> None:
         self._credentials = {"{{username}}": username, "{{password}}": password}
 
-    def _resolve(self, text: str | None) -> str:
+    def _resolve(self, text: str | None, *, allow_password: bool) -> str:
+        """Ganti placeholder kredensial. {{password}} hanya diisi ke field bertipe password."""
         text = text or ""
         for placeholder, real in self._credentials.items():
+            if placeholder == "{{password}}" and not allow_password:
+                continue
             text = text.replace(placeholder, real)
         return text
 
@@ -261,7 +284,7 @@ class WebDriver:
             if kind == "click":
                 self._locator(element).click()
             elif kind == "type":
-                self._locator(element).fill(self._resolve(action.value))
+                self._locator(element).fill(self._resolve(action.value, allow_password=element.input_type == "password"))
             elif kind == "select":
                 self._select(self._locator(element), action.value or "")
             elif kind == "scroll":

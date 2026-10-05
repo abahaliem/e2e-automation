@@ -63,7 +63,8 @@ def build_runtime(cfg: Config, store: RunStore, project_dir: Path, *, environmen
     creds = cfg.credentials()
     masker = Masker([creds.password])
     driver = WebDriver(cfg.target.url, headless=cfg.browser.headless, viewport=cfg.browser.size,
-                       request_filter=guard.should_block_request if guard.production else None)
+                       request_filter=guard.should_block_request if guard.production else None,
+                       tracked_domains=cfg.domains())
     driver.set_credentials(creds.username, creds.password)
     stop = StopFlag()
     data_prefix = f"QA-AUTO-{(now or datetime.now()):%Y%m%d-%H%M}"
@@ -71,7 +72,15 @@ def build_runtime(cfg: Config, store: RunStore, project_dir: Path, *, environmen
     common = dict(driver=driver, llm=llm, guard=guard, store=store, masker=masker, data_prefix=data_prefix,
                   max_steps=cfg.limits.max_steps_per_tc, vision=cfg.llm.vision, should_stop=stop)
     login_loop = AgentLoop(**common)
-    auth = AuthManager(driver, lambda tc_id, goal: login_loop.run(tc_id, goal, login=True),
+
+    def run_login(tc_id: str, goal: str):
+        driver.login_mode = True  # endpoint login hanya dibuka selama alur login
+        try:
+            return login_loop.run(tc_id, goal, login=True)
+        finally:
+            driver.login_mode = False
+
+    auth = AuthManager(driver, run_login,
                        auth_state_path(project_dir, cfg.target.url, creds.role), creds.role)
     return Runtime(cfg=cfg, store=store, environment=environment, driver=driver, llm=llm, guard=guard, masker=masker,
                    stop=stop, loop=AgentLoop(**common), auth=auth, data_prefix=data_prefix)

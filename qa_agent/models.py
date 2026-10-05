@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import re
 from typing import Literal
+from urllib.parse import urlsplit
 
 from pydantic import BaseModel, Field
 
@@ -9,6 +11,9 @@ ActionType = Literal["click", "type", "select", "scroll", "back", "navigate", "w
 Status = Literal["Pass", "Fail", "Perlu Review", "Blocked", "Skipped"]
 Severity = Literal["Critical", "Major", "Minor"]
 TcType = Literal["positif", "negatif", "validasi", "boundary", "navigasi"]
+
+_LOGIN_PATH = re.compile(r"login|signin|sign-in|auth|masuk", re.IGNORECASE)
+_LOGIN_BUTTON = re.compile(r"(?<!\w)(login|log in|masuk|sign in|signin)(?!\w)", re.IGNORECASE)
 
 STATUSES: tuple[str, ...] = ("Pass", "Fail", "Perlu Review", "Blocked", "Skipped")
 TC_TYPES: tuple[str, ...] = ("positif", "negatif", "validasi", "boundary", "navigasi")
@@ -45,8 +50,15 @@ class Observation(BaseModel):
 
     @property
     def is_login_screen(self) -> bool:
-        # Tepat satu field password. Halaman ganti password (2-3 field) tidak dianggap login.
-        return sum(1 for e in self.elements if e.input_type == "password") == 1
+        """Tepat satu field password DAN (path bernuansa login ATAU tombol login/masuk).
+
+        Form biasa yang punya field password (mis. "Tambah Pengguna", pengaturan SMTP) bukan halaman login.
+        """
+        if sum(1 for e in self.elements if e.input_type == "password") != 1:
+            return False
+        if _LOGIN_PATH.search(urlsplit(self.location).path):
+            return True
+        return any(e.role == "button" and _LOGIN_BUTTON.search(e.name) for e in self.elements)
 
 
 class Action(BaseModel):

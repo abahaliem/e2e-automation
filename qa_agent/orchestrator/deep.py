@@ -101,7 +101,7 @@ class DeepPlanner:
         for _ in range(2):
             reply = self.llm.chat(system, messages)
             try:
-                items = extract_json(reply).get("test_cases")
+                items = extract_json(reply, "test_cases").get("test_cases")
                 if not isinstance(items, list):
                     raise ActionParseError("field 'test_cases' harus berupa list")
                 cases = self._to_cases(items, canonical, screens, has_prd=bool(prd_text))
@@ -137,7 +137,10 @@ class DeepPlanner:
 
 
 def judge(outcome: LoopOutcome, tc: QaTestCase) -> tuple[str, str | None]:
-    """Aturan status (spec §6.4). HTTP 5xx / error JavaScript selalu menang → Fail."""
+    """Aturan status (spec §6.4). Request yang diblok mode production → Skipped (hasilnya tidak bisa dinilai);
+    selain itu HTTP 5xx / error JavaScript selalu menang → Fail."""
+    if any(s.kind == "blocked_request" for s in outcome.signals):
+        return "Skipped", None
     server_error = any(s.kind == "page_error" or (s.kind == "http_error" and (s.status or 0) >= 500) for s in outcome.signals)
     if server_error:
         return "Fail", outcome.severity or "Major"

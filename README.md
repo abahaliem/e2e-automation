@@ -37,7 +37,11 @@ AI yang berperan sebagai QA automation engineer untuk aplikasi web. Agent menjel
 
 ## Mode production
 
-`--env production` memblok aksi berisiko (hapus, simpan, kirim, bayar, dan sejenisnya) **dan** membatalkan semua request POST/PUT/PATCH/DELETE kecuali login. Jika endpoint login aplikasi tidak mengandung kata login/auth/signin/token/session, isi `target.login_endpoints` di config. Gunakan mode ini hanya jika benar-benar perlu.
+`--env production` memblok aksi berisiko (hapus, simpan, kirim, bayar, dan sejenisnya) **dan** membatalkan semua request POST/PUT/PATCH/DELETE. Pengecualiannya hanya endpoint login, dan itu pun **hanya selama agent sedang login**. Service Worker juga diblok supaya request tidak bisa lewat jalur lain.
+
+- Jika endpoint login aplikasi tidak mengandung login/auth/signin/token/session, isi `target.login_endpoints` (dicocokkan per path, misalnya `/api/v2/masuk`).
+- Aplikasi yang memakai POST untuk membaca data (GraphQL, pencarian via POST) atau WebSocket tidak cocok dites di mode ini.
+- Gunakan mode production hanya jika benar-benar perlu.
 
 ## Jika ada masalah
 
@@ -48,7 +52,7 @@ AI yang berperan sebagai QA automation engineer untuk aplikasi web. Agent menjel
 
 ## Keterbatasan
 
-Saat ini hanya untuk web. Belum mendukung OTP/2FA/CAPTCHA, elemen canvas, shadow DOM tertutup, iframe lintas domain, PRD selain `.md`/`.txt`, maupun template Excel kustom. Screenshot di laporan bisa berisi data aplikasi, jadi perlakukan laporan sebagai dokumen internal.
+Saat ini hanya untuk web. Belum mendukung OTP/2FA/CAPTCHA, login yang disimpan di sessionStorage (agent akan login ulang tiap test case), elemen canvas, shadow DOM tertutup, iframe lintas domain, PRD selain `.md`/`.txt`, maupun template Excel kustom. Screenshot di laporan bisa berisi data aplikasi (termasuk password, jika AI menekan tombol "lihat password"), jadi perlakukan laporan sebagai dokumen internal.
 
 ## Pengembangan
 

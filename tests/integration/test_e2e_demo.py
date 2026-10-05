@@ -98,6 +98,7 @@ def test_production_mode_blocks_all_writes(tmp_path, cfg, demo):
         rt.driver.stop()
 
     assert cases[0].status_ai == "Skipped"           # dicegah oleh aturan kata kunci "Simpan"
+    assert cases[1].status_ai == "Skipped"           # request diblok di level jaringan (review #4)
     assert demo.state.writes == []                    # tidak ada satu pun request pengubah data yang lolos
     assert len(demo.state.users) == 2
     assert any("/reports/rebuild" in r for r in rt.driver.blocked_requests)  # dicegah di level jaringan

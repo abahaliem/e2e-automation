@@ -124,6 +124,19 @@ def test_import_cases_reports_row_number(tmp_path):
         import_cases_xlsx(store.cases_xlsx)
 
 
+def test_control_characters_and_formula_like_text_are_written_safely(tmp_path):
+    # Review #8: karakter kontrol (ANSI) dan teks diawali "=" tidak boleh merusak laporan
+    store = sample_run(tmp_path / "run")
+    cases = store.read_testcases()
+    cases[0].title = '=HYPERLINK("http://evil")'
+    cases[1].actual = "Console: [31mError[0m"
+    write_report_xlsx(store.report_xlsx, store.read_meta(), cases, store.read_steps(), None)
+    ws = load_workbook(store.report_xlsx)["Test Cases"]
+    title = ws.cell(2, col(ws, "Skenario"))
+    assert title.value == '=HYPERLINK("http://evil")' and title.data_type == "s"
+    assert ws.cell(3, col(ws, "Actual Result")).value == "Console: [31mError[0m"
+
+
 def test_locked_workbook_raises_friendly_error(tmp_path, monkeypatch):
     store = sample_run(tmp_path / "run")
 

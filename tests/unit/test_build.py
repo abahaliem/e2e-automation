@@ -29,6 +29,27 @@ def test_build_then_review_roundtrip(tmp_path):
     assert 'data-status="Fail"' in text and 'data-status="Perlu Review"' not in text
 
 
+def test_build_keeps_reviewer_edits_not_yet_imported(tmp_path):
+    # Review #7: akhir run/--resume menulis ulang report.xlsx; editan reviewer tidak boleh hilang
+    store = sample_run(tmp_path / "run")
+    xlsx, _ = build_reports(store)
+    wb = load_workbook(xlsx)
+    wb["Test Cases"].cell(2, TC_HEADERS.index("Status Final") + 1).value = "Fail"
+    wb.save(xlsx)
+    build_reports(store)
+    assert load_workbook(xlsx)["Test Cases"].cell(2, TC_HEADERS.index("Status Final") + 1).value == "Fail"
+
+
+def test_build_survives_invalid_review_cell(tmp_path):
+    store = sample_run(tmp_path / "run")
+    xlsx, _ = build_reports(store)
+    wb = load_workbook(xlsx)
+    wb["Test Cases"].cell(2, TC_HEADERS.index("Status Final") + 1).value = "Lulus"
+    wb.save(xlsx)
+    build_reports(store)  # tidak boleh crash di akhir run
+    assert xlsx.exists()
+
+
 def test_import_review_without_report(tmp_path):
     store = sample_run(tmp_path / "run")
     assert import_review(store) == 0
