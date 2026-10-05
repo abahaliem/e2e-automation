@@ -2,18 +2,20 @@ from __future__ import annotations
 
 import json
 import re
-from typing import Literal
+from typing import Callable, Literal
 from urllib.parse import urlsplit
 
 from pydantic import BaseModel, ValidationError, field_validator
 
 from qa_agent.agent import prompts
-from qa_agent.agent.loop import LoopOutcome
+from qa_agent.agent.loop import AgentLoop, LoopOutcome
 from qa_agent.agent.parser import ActionParseError, extract_json
-from qa_agent.evidence import module_abbr
+from qa_agent.drivers.base import Driver
+from qa_agent.evidence import RunStore, module_abbr
 from qa_agent.guard import LOGOUT_KEYWORDS
-from qa_agent.llm.base import LLMClient, Message
+from qa_agent.llm.base import LLMClient, LLMError, Message
 from qa_agent.models import AppMap, QaTestCase, ScreenInfo, TcType
+from qa_agent.orchestrator.auth import AuthManager, LoginFailed
 
 
 class PlanError(Exception):
@@ -163,3 +165,57 @@ def goal_for(tc: QaTestCase) -> str:
 def is_logout_case(tc: QaTestCase) -> bool:
     text = " ".join([tc.title, *tc.steps]).lower()
     return any(re.search(rf"(?<!\w){re.escape(k)}(?!\w)", text) for k in LOGOUT_KEYWORDS)
+
+
+class DeepRunner:
+    def __init__(self, *, driver: Driver, loop: AgentLoop, auth: AuthManager | None, store: RunStore,
+                 should_stop: Callable[[], bool] = lambda: False) -> None:
+        self.driver = driver
+        self.loop = loop
+        self.auth = auth
+        self.store = store
+        self.should_stop = should_stop
+
+    def execute(self, cases: list[QaTestCase], *, needs_auth: bool) -> list[QaTestCase]:
+        self.loop.relogin = self.auth.relogin if (needs_auth and self.auth is not None) else None
+        for tc in cases:
+            if tc.status_ai is not None:
+                continue  # sudah selesai (resume)
+            if self.should_stop():
+                break
+            self.store.drop_steps(tc.id)
+            try:
+                self._prepare(tc, needs_auth)
+                outcome = self.loop.run(tc.id, goal_for(tc), allow_logout=is_logout_case(tc))
+                if outcome.error_kind == "interrupted":
+                    break  # biarkan status kosong supaya dijalankan ulang saat resume
+                tc.status_ai, tc.severity = judge(outcome, tc)
+                tc.actual = outcome.actual or outcome.reason
+                tc.ai_note = outcome.reason if outcome.final == "blocked" else ""
+            except (LLMError, LoginFailed):
+                self.store.write_testcases(cases)
+                raise
+            except Exception as e:  # satu test case gagal tidak menghentikan run
+                tc.status_ai = "Blocked"
+                tc.actual = f"Error sistem: {type(e).__name__}: {e}"
+                self._recover()
+            self.store.write_testcases(cases)
+        return cases
+
+    def _prepare(self, tc: QaTestCase, needs_auth: bool) -> None:
+        start = tc.start_url or "/"
+        if needs_auth and self.auth is not None:
+            self.auth.start_authenticated(start)
+        else:
+            self.driver.new_session(None)
+            self.driver.goto(start)
+
+    def _recover(self) -> None:
+        try:
+            self.driver.new_session(None)
+        except Exception:
+            try:
+                self.driver.stop()
+            except Exception:
+                pass
+            self.driver.start()
