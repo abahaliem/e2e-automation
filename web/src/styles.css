@@ -1,4 +1,7 @@
-@import "tailwindcss";
+@import "tailwindcss" source(none);
+/* Daftar kelas dibuat oleh plugin web/tw-candidates.ts (pemindaian file bawaan Tailwind tidak berjalan
+   di laptop kantor karena binary native-nya diblokir antivirus). */
+@import "./tw-candidates.css";
 
 /* Token tema terang QA Agent (sama dengan docs/design/mockups/assets/theme.js).
    ink-950 = latar halaman, ink-900 = permukaan kartu/panel, ink-700 = garis, fg = teks. */

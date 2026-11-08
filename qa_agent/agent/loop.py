@@ -189,6 +189,8 @@ class AgentLoop:
             description = humanize(action.action, _element_dict(element),
                                    self.masker.mask(action.status if action.action == "done" else
                                                     action.reason if action.action == "blocked" else action.value))
+            if self.control is not None:
+                self.control.expect_confirm()
             self._emit({
                 "type": "step.planned", "tc_id": tc_id, "step_no": step_no, "action": action.action,
                 "element": None if element is None else {"role": element.role, "name": element.name,

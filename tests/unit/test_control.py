@@ -167,6 +167,17 @@ def test_confirm_each_step_blocks_until_confirm():
     assert box2["value"].kind == "continue"
 
 
+def test_confirm_accepted_between_planned_and_wait():
+    # Event step.planned terkirim sebelum worker masuk wait_before_execute; klik QA di celah itu tidak boleh ditolak.
+    c = RunControl(confirm_each_step=True)
+    c.expect_confirm()
+    c.confirm_step()
+    assert c.wait_before_execute(timeout=0.5).kind == "continue"
+    # konfirmasi tidak terbawa ke langkah berikutnya
+    with pytest.raises(InterventionError):
+        c.confirm_step()
+
+
 def test_confirm_step_rejected_when_not_waiting():
     c = RunControl(confirm_each_step=False)
     with pytest.raises(InterventionError):

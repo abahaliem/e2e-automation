@@ -80,6 +80,7 @@ export function RunLivePage() {
   const run = useQuery({ queryKey: ["run", runId], queryFn: () => api.getRun(runId), refetchInterval: 5000 });
   const { snapshot, steps, frame, connected } = useRunStream(Number.isFinite(runId) ? runId : null);
   const [error, setError] = useState<string | null>(null);
+  const [confirmedKey, setConfirmedKey] = useState<string | null>(null);
   const now = useNow();
 
   const status = snapshot?.status ?? run.data?.status;
@@ -105,8 +106,12 @@ export function RunLivePage() {
     if (status) qc.invalidateQueries({ queryKey: ["run", runId] });
   }, [status, qc, runId]);
 
+  const plannedKey = planned ? `${planned.tc_id}#${planned.step_no}` : null;
+  const awaitingConfirm = Boolean(snapshot?.awaiting_confirm) && plannedKey !== null && plannedKey !== confirmedKey;
+
   const send = async (cmd: ControlInput) => {
     setError(null);
+    if (cmd.command === "confirm_step") setConfirmedKey(plannedKey); // cegah klik ganda untuk langkah yang sama
     try {
       await api.control(runId, cmd);
     } catch (e) {
@@ -183,7 +188,7 @@ export function RunLivePage() {
         </div>
       </header>
 
-      <div className="flex flex-col gap-2 px-5 empty:hidden [&:not(:empty)]:pt-3">
+      <div className="flex flex-col gap-2 px-5 [&:not(:empty)]:pt-3">
         {error && <Alert tone="error">{error}</Alert>}
         {status === "paused" && (
           <Alert
@@ -379,7 +384,7 @@ export function RunLivePage() {
           </ol>
           <InterventionPanel
             controlState={control}
-            awaitingConfirm={Boolean(snapshot?.awaiting_confirm)}
+            awaitingConfirm={awaitingConfirm}
             confirmEachStep={Boolean(snapshot?.confirm_each_step ?? r?.confirm_each_step)}
             active={active}
             onCommand={send}

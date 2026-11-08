@@ -19,3 +19,4 @@ web/node_modules/
 web/*.tsbuildinfo
 qa_agent/server/static/*
 !qa_agent/server/static/.gitkeep
+web/src/tw-candidates.css

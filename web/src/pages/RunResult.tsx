@@ -386,12 +386,12 @@ function CaseDetailPanel({ runId, tcId, run }: { runId: number; tcId: string; ru
             </div>
             {warning && <Alert tone="warning">{warning}</Alert>}
             {saved && !warning && <Alert tone="success">Review disimpan dan laporan diperbarui.</Alert>}
-            <div className="flex gap-2">
-              <Button variant="primary" className="flex-1" onClick={() => save.mutate()} disabled={save.isPending}>
+            <div className="flex flex-col gap-2">
+              <Button variant="primary" onClick={() => save.mutate()} disabled={save.isPending}>
                 <FloppyDisk />
                 Simpan review
               </Button>
-              <Button className="flex-1" onClick={copy}>
+              <Button onClick={copy}>
                 <Copy />
                 {copied ? "Disalin" : "Salin sebagai laporan bug (Jira)"}
               </Button>

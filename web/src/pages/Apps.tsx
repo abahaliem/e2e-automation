@@ -177,7 +177,7 @@ function AppForm({ app, onSaved, onDeleted }: { app: App | null; onSaved: (a: Ap
             </Link>
           )}
           {app && (
-            <Button variant="ghost" className="ml-auto text-fail" onClick={() => remove.mutate()}>
+            <Button variant="ghost" className="ml-auto text-fail! hover:bg-fail/5" onClick={() => remove.mutate()}>
               <Trash />
               Hapus
             </Button>
