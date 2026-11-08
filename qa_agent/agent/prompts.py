@@ -94,8 +94,12 @@ def _images(obs: Observation, vision: bool) -> list[bytes]:
     return [obs.screenshot_annotated] if vision and obs.screenshot_annotated else []
 
 
-def step_message(goal: str, obs: Observation, history: list[str], notes: list[str], vision: bool) -> Message:
+def step_message(goal: str, obs: Observation, history: list[str], notes: list[str], vision: bool,
+                 hints: list[str] | None = None) -> Message:
     text = f"## Tujuan\n{goal}\n\n## Riwayat langkah terakhir\n" + ("\n".join(history) or "(belum ada)")
+    if hints:
+        text += ("\n\n## Arahan QA\n" + "\n".join(f"- {h}" for h in hints)
+                 + "\n(Arahan dari QA manusia yang memantau. Ikuti selama tidak melanggar aturan keamanan.)")
     if notes:
         text += "\n\n## Catatan sistem\n" + "\n".join(f"- {n}" for n in notes)
     text += "\n\n## Layar saat ini\n" + observation_text(obs)

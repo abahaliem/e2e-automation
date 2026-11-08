@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 from typing import Callable, Literal
 
 from qa_agent.agent import prompts
+from qa_agent.agent.control import ControlDecision, RunControl
 from qa_agent.agent.loop_detect import LoopDetector
 from qa_agent.agent.parser import ActionParseError, parse_action
 from qa_agent.drivers.base import Driver, DriverCrashed
@@ -14,6 +15,8 @@ from qa_agent.models import Action, Element, Observation, Signal, StepRecord
 from qa_agent.report.humanize import humanize
 
 HISTORY_WINDOW = 8
+SKIPPED_BY_QA = "Dilewati oleh QA"
+VERIFIED_BY_QA = "Diverifikasi manual oleh QA"
 
 
 @dataclass
@@ -26,7 +29,8 @@ class LoopOutcome:
     steps: int = 0
     guard_blocks: int = 0
     signals: list[Signal] = field(default_factory=list)
-    error_kind: str = ""  # "", "max_steps", "loop", "interrupted", "agent"
+    # "", "max_steps", "loop", "interrupted", "agent", "skipped_by_qa", "ended_by_qa"
+    error_kind: str = ""
 
 
 def find_same(obs: Observation, element: Element) -> Element | None:
@@ -45,6 +49,21 @@ def _element_dict(element: Element | None) -> dict[str, str] | None:
     return {"role": element.role, "name": element.name, "selector": element.selector}
 
 
+def describe_manual(event: dict, masker: Masker) -> str:
+    """Deskripsi singkat input manual QA; teks yang diketik selalu disamarkan."""
+    kind = event.get("kind")
+    if kind == "click":
+        return f"Klik di ({float(event.get('x', 0)):.2f}, {float(event.get('y', 0)):.2f})"
+    if kind == "type":
+        text = str(event.get("text", ""))
+        return f"Ketik {len(text)} karakter" if text else "Ketik (kosong)"
+    if kind == "key":
+        return f"Tekan tombol {event.get('key', '')}"
+    if kind == "scroll":
+        return "Gulir ke bawah" if int(event.get("dy", 0)) >= 0 else "Gulir ke atas"
+    return masker.mask(str(kind)) or "Input manual"
+
+
 class AgentLoop:
     def __init__(
         self,
@@ -60,6 +79,8 @@ class AgentLoop:
         vision: bool = True,
         relogin: Callable[[str], None] | None = None,
         should_stop: Callable[[], bool] = lambda: False,
+        control: RunControl | None = None,
+        on_event: Callable[[dict], None] = lambda e: None,
     ) -> None:
         self.driver = driver
         self.llm = llm
@@ -72,22 +93,75 @@ class AgentLoop:
         self.vision = vision
         self.relogin = relogin
         self.should_stop = should_stop
+        self.control = control
+        self.on_event = on_event
+
+    # ------------------------------------------------------------------
+    def _emit(self, event: dict) -> None:
+        try:
+            self.on_event(event)
+        except Exception:  # event tidak boleh menggagalkan test case
+            pass
 
     def run(self, tc_id: str, goal: str, *, allow_logout: bool = False, login: bool = False) -> LoopOutcome:
+        try:
+            return self._run(tc_id, goal, allow_logout=allow_logout, login=login)
+        finally:
+            if self.control is not None:  # perintah khusus test case ini tidak terbawa ke test case berikutnya
+                self.control.reset_case()
+
+    def _run(self, tc_id: str, goal: str, *, allow_logout: bool, login: bool) -> LoopOutcome:
         system = prompts.execute_system(self.platform, self.data_prefix)
         history: list[str] = []
         notes: list[str] = []
+        hints: list[str] = []
+        manual_log: list[str] = []
         signals: list[Signal] = []
         detector = LoopDetector()
         guard_blocks = 0
         relogged = False
         last_location = ""
+        step_no = 0   # nomor rekaman langkah (AI + manual)
+        ai_steps = 0  # anggaran langkah AI
         obs = self.driver.observe()
 
-        for step_no in range(1, self.max_steps + 1):
+        def outcome(**kw) -> LoopOutcome:
+            return LoopOutcome(steps=step_no, guard_blocks=guard_blocks, signals=signals, **kw)
+
+        def from_control(d: ControlDecision) -> LoopOutcome | None:
+            if d.kind == "stop":
+                return outcome(final="blocked", reason="Dihentikan oleh QA", error_kind="interrupted")
+            if d.kind == "skip":
+                return outcome(final="blocked", reason=SKIPPED_BY_QA, error_kind="skipped_by_qa")
+            if d.kind == "end_case":
+                actual = VERIFIED_BY_QA + (f": {self.masker.mask(d.note)}" if d.note else "")
+                return outcome(final="done", status=d.end_status, actual=actual, error_kind="ended_by_qa")
+            return None
+
+        while ai_steps < self.max_steps:
             if self.should_stop():
-                return LoopOutcome(final="blocked", reason="Dihentikan pengguna (Ctrl+C)", steps=step_no - 1,
-                                   guard_blocks=guard_blocks, signals=signals, error_kind="interrupted")
+                return outcome(final="blocked", reason="Dihentikan pengguna (Ctrl+C)", error_kind="interrupted")
+
+            # ---- titik kontrol (a): sebelum AI memutuskan ----
+            if self.control is not None:
+                d = self.control.wait_before_decide()
+                done = from_control(d)
+                if done is not None:
+                    return done
+                if d.kind == "manual_input":
+                    step_no += 1
+                    manual_log.append(self._manual(tc_id, step_no, obs, d.input or {}))
+                    obs = self.driver.observe()
+                    continue
+                for text in d.hints:
+                    step_no += 1
+                    hints.append(text)
+                    self._record_hint(tc_id, step_no, obs, text)
+                if manual_log:
+                    notes.append("QA melakukan langkah manual: " + "; ".join(manual_log)
+                                 + ". Lanjutkan tujuan dari kondisi layar saat ini.")
+                    history.append(f"(QA) {'; '.join(manual_log)}")
+                    manual_log = []
 
             if self.relogin and not (login or allow_logout or relogged) and obs.is_login_screen and last_location:
                 relogged = True
@@ -95,8 +169,12 @@ class AgentLoop:
                 obs = self.driver.observe()
                 notes.append("Sesi login kedaluwarsa; sistem sudah login ulang dan kembali ke halaman terakhir. Lanjutkan tujuan.")
 
+            for s in obs.signals:
+                self._emit({"type": "signal", "tc_id": tc_id, "signal": s.model_dump()})
             signals.extend(obs.signals)
-            message = prompts.step_message(goal, obs, history[-HISTORY_WINDOW:], notes, self.vision)
+            ai_steps += 1
+            step_no += 1
+            message = prompts.step_message(goal, obs, history[-HISTORY_WINDOW:], notes, self.vision, hints)
             message.text = self.masker.mask(message.text) or ""
             notes = []
             try:
@@ -108,32 +186,60 @@ class AgentLoop:
 
             by_index = {e.index: e for e in obs.elements}
             element = by_index.get(action.element) if action.element is not None else None
+            description = humanize(action.action, _element_dict(element),
+                                   self.masker.mask(action.status if action.action == "done" else
+                                                    action.reason if action.action == "blocked" else action.value))
+            self._emit({
+                "type": "step.planned", "tc_id": tc_id, "step_no": step_no, "action": action.action,
+                "element": None if element is None else {"role": element.role, "name": element.name,
+                                                         "bbox": list(element.bbox)},
+                "thought": self.masker.mask(action.thought) or "", "risk": action.risk,
+                "description": description, "viewport": self._viewport(),
+            })
+
+            # ---- titik kontrol (b): setelah keputusan, sebelum eksekusi ----
+            if self.control is not None:
+                d = self.control.wait_before_execute()
+                done = from_control(d)
+                if done is not None:
+                    return done
+                if d.kind == "think_again":
+                    ai_steps -= 1
+                    step_no -= 1
+                    notes.append(f"Pikir ulang: QA membatalkan rencana '{description}'. Pilih langkah lain yang lebih tepat.")
+                    hints.extend(d.hints)
+                    continue
+                if d.kind == "manual_input":
+                    # QA mengambil alih sebelum rencana dijalankan: rencana dibuang.
+                    ai_steps -= 1
+                    manual_log.append(self._manual(tc_id, step_no, obs, d.input or {}))
+                    obs = self.driver.observe()
+                    continue
 
             if action.action in ("done", "blocked"):
                 shot = self.store.save_screenshot(f"{tc_id}_step-{step_no:02d}", self.driver.screenshot())
                 self._record(tc_id, step_no, obs, action, None, "ok", shot)
+                self._emit_done(tc_id, step_no, "ok", shot, description)
                 if action.action == "done":
-                    return LoopOutcome(final="done", status=action.status, actual=self.masker.mask(action.actual or "") or "",
-                                       severity=action.severity, steps=step_no, guard_blocks=guard_blocks, signals=signals)
-                return LoopOutcome(final="blocked", reason=self.masker.mask(action.reason or "AI menyatakan blocked") or "",
-                                   actual=self.masker.mask(action.actual or "") or "", steps=step_no,
-                                   guard_blocks=guard_blocks, signals=signals, error_kind="agent")
+                    return outcome(final="done", status=action.status, actual=self.masker.mask(action.actual or "") or "",
+                                   severity=action.severity)
+                return outcome(final="blocked", reason=self.masker.mask(action.reason or "AI menyatakan blocked") or "",
+                               actual=self.masker.mask(action.actual or "") or "", error_kind="agent")
 
             target = element.selector if element is not None else (action.value or "")
             verdict = detector.record(obs.fingerprint, action.action, target)
             if verdict == "block":
                 self._record(tc_id, step_no, obs, action, element, "error: langkah berulang tanpa kemajuan")
-                return LoopOutcome(final="blocked", reason="Langkah yang sama diulang tanpa kemajuan", steps=step_no,
-                                   guard_blocks=guard_blocks, signals=signals, error_kind="loop")
+                return outcome(final="blocked", reason="Langkah yang sama diulang tanpa kemajuan", error_kind="loop")
             if verdict == "warn":
                 notes.append("PERINGATAN: aksi ini sudah dicoba berulang kali di layar yang sama. Pilih aksi lain atau nyatakan blocked.")
 
-            description = humanize(action.action, _element_dict(element), self.masker.mask(action.value))
             decision = self.guard.check(action, element, allow_logout=allow_logout, login=login)
             if not decision.allowed:
                 guard_blocks += 1
                 shot = self.store.save_screenshot(f"{tc_id}_step-{step_no:02d}", self.driver.screenshot(highlight=element))
                 self._record(tc_id, step_no, obs, action, element, "skipped", shot, guard=f"blocked: {decision.reason}")
+                self._emit_done(tc_id, step_no, "skipped", shot, description)
                 notes.append(f"Aksi '{description}' diblok Safety Guard: {decision.reason}. Cari jalan lain atau nyatakan blocked.")
                 history.append(f"{step_no}. {description} → DIBLOK")
                 continue
@@ -154,12 +260,56 @@ class AgentLoop:
             shot = self.store.save_screenshot(f"{tc_id}_step-{step_no:02d}", after)
             outcome_text = "ok" if result.ok else f"error: {result.error}"
             self._record(tc_id, step_no, obs, action, element, outcome_text, shot)
+            self._emit_done(tc_id, step_no, self.masker.mask(outcome_text) or "", shot, description)
             history.append(f"{step_no}. {description} → {'ok' if result.ok else 'gagal: ' + (self.masker.mask(result.error) or '')}")
             last_location = obs.location
             obs = self.driver.observe()
 
-        return LoopOutcome(final="blocked", reason=f"Batas {self.max_steps} langkah tercapai", steps=self.max_steps,
-                           guard_blocks=guard_blocks, signals=signals, error_kind="max_steps")
+        return outcome(final="blocked", reason=f"Batas {self.max_steps} langkah tercapai", error_kind="max_steps")
+
+    # ------------------------------------------------------------------
+    def _viewport(self) -> dict | None:
+        size = getattr(self.driver, "viewport_size", None)
+        if callable(size):
+            try:
+                size = size()
+            except Exception:
+                size = None
+        return dict(size) if isinstance(size, dict) else None
+
+    def _emit_done(self, tc_id: str, step_no: int, result: str, screenshot: str | None, description: str,
+                   actor: str = "ai") -> None:
+        self._emit({"type": "step.done", "tc_id": tc_id, "step_no": step_no, "result": result,
+                    "screenshot": screenshot, "description": description, "actor": actor})
+
+    def _manual(self, tc_id: str, step_no: int, obs: Observation, event: dict) -> str:
+        """Jalankan satu input manual QA (tanpa Guard kata kunci; filter jaringan tetap aktif)."""
+        description = describe_manual(event, self.masker)
+        manual = getattr(self.driver, "manual_input", None)
+        if manual is None:
+            result_text = "error: driver tidak mendukung input manual"
+        else:
+            result = manual(event)
+            if result.fatal:
+                raise DriverCrashed(result.error or "Browser tertutup")
+            result_text = "ok" if result.ok else f"error: {result.error}"
+        shot = self.store.save_screenshot(f"{tc_id}_step-{step_no:02d}", self.driver.screenshot())
+        self.store.append_step(StepRecord(
+            tc_id=tc_id, step_no=step_no, timestamp=now_iso(), location=self.masker.mask(obs.location) or "",
+            fingerprint=obs.fingerprint, action="manual", value=description,
+            result=self.masker.mask(result_text) or "", screenshot=shot, actor="manual",
+        ))
+        self._emit_done(tc_id, step_no, self.masker.mask(result_text) or "", shot,
+                        humanize("manual", None, description), actor="manual")
+        return description
+
+    def _record_hint(self, tc_id: str, step_no: int, obs: Observation, text: str) -> None:
+        masked = self.masker.mask(text)
+        self.store.append_step(StepRecord(
+            tc_id=tc_id, step_no=step_no, timestamp=now_iso(), location=self.masker.mask(obs.location) or "",
+            fingerprint=obs.fingerprint, action="hint", value=masked, actor="manual",
+        ))
+        self._emit_done(tc_id, step_no, "ok", None, humanize("hint", None, masked), actor="manual")
 
     def _decide(self, system: str, message: Message, element_count: int) -> Action:
         reply = self.llm.chat(system, [message])
