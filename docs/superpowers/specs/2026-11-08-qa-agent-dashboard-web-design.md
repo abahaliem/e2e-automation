@@ -26,7 +26,7 @@ Mengganti cara pakai berbasis CLI dengan **dashboard web lokal yang bagus (tema 
 | Akses | Hanya `127.0.0.1`, tanpa login; struktur memungkinkan login ditambahkan nanti (pilihan C) |
 | Stack | FastAPI (Python) + React + TypeScript + Vite + Tailwind v4 + shadcn/ui; hasil build dibungkus dalam package Python |
 | Tema | Terang, satu aksen biru `#2560e8`, hijau/merah/kuning hanya untuk status; font Geist + Geist Mono; ikon Phosphor |
-| Urutan sub-proyek | 1 Dashboard + Web → 2 Android (HP fisik utama, emulator opsional, upload APK) → 3 Skill QA + dokumen PDF baru + template Excel |
+| Urutan sub-proyek | 1 Dashboard + Web → 2 Android (HP fisik utama, emulator opsional, upload APK) → 3 Skill QA + dokumen PDF baru + template Excel → 4 Deploy ke server (login & peran, penyimpanan rahasia Linux, Docker, HTTPS) |
 
 ## 3. Arsitektur
 
@@ -41,6 +41,7 @@ FastAPI: API & WS ─ RunManager (antrian, 1 worker thread per run, maks 2 paral
          Secrets: Windows Credential Manager (keyring)
 ```
 
+- `qa-agent serve` mendengarkan di `127.0.0.1:8787` (port berikutnya bila dipakai) dan membuka browser otomatis (`--no-browser` untuk menonaktifkan).
 - `qa_agent/` (mesin): tambahan kecil saja — `RunControl` dan `EventBus` yang dipanggil di titik kontrol AgentLoop. CLI lama tetap berfungsi.
 - `qa_agent/server/` (baru): app FastAPI, router REST, WebSocket, RunManager, store SQLite, secrets.
 - `web/` (baru): aplikasi React; `npm run build` menghasilkan `qa_agent/server/static/`.
@@ -85,6 +86,7 @@ Titik kontrol: (a) sebelum AI memutuskan langkah, (b) setelah keputusan dan sebe
 - Folder data default `%USERPROFILE%\QA Agent\` (opsi `--data-dir`): `qa-agent.db`, `runs/`, `auth/`.
 - Tabel: `apps`, `accounts` (password di keyring), `ai_profiles` (API key di keyring), `runs` (status, waktu, folder, jumlah per status), `test_cases_index` (id, judul, status AI, status final, severity).
 - API tidak pernah mengembalikan nilai rahasia; hanya versi tersamar (`sk-••••3f9a`). Tidak ada fallback teks biasa bila keyring tidak tersedia.
+- **Rahasia lewat satu antarmuka `SecretStore`** (`get/set/delete`, kunci seperti `ai-profile:3`, `account:7`). Implementasi sub-proyek ini: `KeyringSecretStore` (Windows Credential Manager) dan `MemorySecretStore` (test). Implementasi server (sub-proyek 4) cukup menambah backend baru, misalnya file terenkripsi dengan kunci induk dari environment, tanpa mengubah kode pemanggil.
 - Ambil daftar model via `/v1/models` (fallback input manual); Tes koneksi = teks + gambar (logika `qa-agent check`).
 - Review dari dashboard menulis `review.json`, membangun ulang Excel/HTML, memperbarui indeks; editan di Excel tetap diimpor sebelum laporan dibangun ulang; Excel terkunci → peringatan.
 - Unduh PDF di sub-proyek ini: `report.html` dicetak via Chromium `page.pdf()`.
@@ -115,4 +117,4 @@ Titik kontrol: (a) sebelum AI memutuskan langkah, (b) setelah keputusan dan sebe
 
 ## 9. Di luar cakupan
 
-Android, Skill QA, desain dokumen PDF baru, template Excel kantor, login multi-pengguna, packaging aplikasi desktop.
+Android, Skill QA, desain dokumen PDF baru, template Excel kantor, login multi-pengguna, packaging aplikasi desktop, deploy ke server (Docker, HTTPS, penyimpanan rahasia Linux).
