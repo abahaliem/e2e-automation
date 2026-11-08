@@ -126,6 +126,7 @@ class StepRecord(BaseModel):
     result: str = "ok"
     signals: list[Signal] = Field(default_factory=list)
     screenshot: str | None = None
+    actor: Literal["ai", "manual"] = "ai"
 
 
 class ScreenInfo(BaseModel):

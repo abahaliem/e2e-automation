@@ -151,7 +151,7 @@ def _write_findings(ws: Worksheet, cases: list[QaTestCase], steps: list[StepReco
             continue
         n += 1
         records = _steps_for(tc.id, steps)
-        repro = [humanize(r.action, r.element, r.value) for r in records if r.action not in ("done", "blocked", "invalid")]
+        repro = [humanize(r.action, r.element, r.value) for r in records if r.action not in ("done", "blocked", "invalid", "hint")]
         signals: list[str] = []
         for r in records:
             for s in r.signals:
