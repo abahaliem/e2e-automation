@@ -34,6 +34,16 @@ COMMANDS = ("pause", "resume", "takeover", "release", "hint", "think_again", "sk
             "confirm_step", "input")
 
 
+def friendly_error(e: Exception) -> str:
+    """Pesan error yang bisa dibaca QA (tanpa kotak ASCII Playwright), dengan langkah perbaikan bila dikenal."""
+    text = str(e)
+    if "Executable doesn't exist" in text or "playwright install" in text:
+        return ("Browser Chromium untuk testing tidak ditemukan atau sedang diblokir (mis. dipindai antivirus). "
+                "Jalankan: .venv/Scripts/python -m playwright install chromium, lalu klik Lanjutkan run.")
+    first = next((ln.strip() for ln in text.splitlines() if ln.strip() and not set(ln.strip()) & set("╔╗╚╝║═")), "")
+    return f"Error tak terduga: {type(e).__name__}: {first[:300]}"
+
+
 class RunPaused(Exception):
     """Run tidak bisa dimulai/dilanjutkan sampai pengguna memperbaiki pengaturan."""
 
@@ -348,7 +358,7 @@ class RunManager:
         except (PlanError, ConfigError) as e:
             status, note = "paused", str(e)
         except Exception as e:  # laporan parsial tetap ditulis
-            status, note = "interrupted", f"Error tak terduga: {type(e).__name__}: {e}"
+            status, note = "interrupted", friendly_error(e)
         finally:
             active.driver = None
             if rt is not None:
