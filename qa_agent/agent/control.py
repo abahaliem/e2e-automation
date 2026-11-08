@@ -40,6 +40,7 @@ class RunControl:
         self._think_again = False
         self._end: tuple[str, str] | None = None
         self._confirmed = False
+        self._confirm_expected = False
         self._awaiting_confirm = False
         # Dipanggil berkala dari worker thread selama menunggu (dijeda/ambil alih/konfirmasi).
         self.idle: Callable[[], None] | None = None
@@ -135,10 +136,16 @@ class RunControl:
             self._inputs.clear()
             self._cond.notify_all()
 
+    def expect_confirm(self) -> None:
+        """Dipanggil loop tepat sebelum mengirim step.planned: konfirmasi QA boleh tiba sebelum worker menunggu."""
+        with self._cond:
+            if self.confirm_each_step:
+                self._confirm_expected = True
+
     def confirm_step(self) -> None:
         with self._cond:
             self._require_alive()
-            if not self._awaiting_confirm:
+            if not (self._awaiting_confirm or self._confirm_expected) or self._confirmed:
                 raise InterventionError("Tidak ada langkah yang menunggu konfirmasi")
             self._confirmed = True
             self._cond.notify_all()
@@ -163,6 +170,7 @@ class RunControl:
             self._think_again = False
             self._end = None
             self._confirmed = False
+            self._confirm_expected = False
 
     # ---------- titik kontrol (worker thread) ----------
     def wait_before_decide(self, timeout: float | None = None) -> ControlDecision:
@@ -223,6 +231,7 @@ class RunControl:
             if not self._confirmed:
                 return None
             self._confirmed = False
+            self._confirm_expected = False
         return ControlDecision("continue", hints=self._take_hints() if point == "decide" else [])
 
     def _take_hints(self) -> list[str]:

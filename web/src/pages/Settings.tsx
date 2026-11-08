@@ -422,7 +422,7 @@ function ProfileForm({
             </Button>
           )}
           {profile && (
-            <Button variant="ghost" size="lg" className="ml-auto text-fail" onClick={() => remove.mutate()}>
+            <Button variant="ghost" size="lg" className="ml-auto text-fail! hover:bg-fail/5" onClick={() => remove.mutate()}>
               <Trash />
               Hapus profil
             </Button>

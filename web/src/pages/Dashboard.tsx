@@ -47,7 +47,7 @@ export function DashboardPage() {
               <option value={30}>30 hari terakhir</option>
               <option value={90}>90 hari terakhir</option>
             </Select>
-            <Link to="/runs/new" className="flex h-10 items-center gap-2 rounded-lg bg-accent px-5 text-sm font-semibold text-white hover:bg-accent-hover">
+            <Link to="/runs/new" className="flex h-10 items-center gap-2 whitespace-nowrap rounded-lg bg-accent px-5 text-sm font-semibold text-white hover:bg-accent-hover">
               <Play weight="fill" />
               Run baru
             </Link>
@@ -259,7 +259,7 @@ function RunningCard({ run }: { run: Run }) {
         {pausedByError && run.note && <div className="mt-2 line-clamp-2 text-xs text-review">{run.note}</div>}
         <div className="mt-3 flex items-center justify-between text-xs text-fg-muted">
           <span>Mulai {formatDateTime(run.started_at)}</span>
-          <CountsInline run={run} />
+          {Object.keys(run.counts).length > 0 && <CountsInline run={run} />}
         </div>
         {pausedByError ? (
           <button

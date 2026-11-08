@@ -41,7 +41,7 @@ export function InterventionPanel({
       {confirmEachStep && awaitingConfirm && alive && (
         <div className="flex items-center justify-between gap-3 rounded-lg border border-accent-line bg-accent-soft px-3 py-2.5 text-sm">
           <span>Agent menunggu persetujuan untuk langkah berikutnya.</span>
-          <Button variant="primary" size="sm" onClick={() => onCommand({ command: "confirm_step" })}>
+          <Button variant="primary" size="sm" className="shrink-0 whitespace-nowrap" onClick={() => onCommand({ command: "confirm_step" })}>
             <Play weight="fill" />
             Jalankan langkah
           </Button>

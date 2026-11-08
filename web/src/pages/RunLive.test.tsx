@@ -81,6 +81,20 @@ describe("Run berjalan", () => {
     expect(await screen.findByRole("link", { name: /Lihat hasil/ })).toHaveAttribute("href", "/runs/9/result");
   });
 
+  it("tombol Jalankan langkah hilang setelah diklik (tidak bisa klik ganda)", async () => {
+    const planned = {
+      type: "step.planned" as const, tc_id: "TC-PEN-002", step_no: 2, action: "click", element: null,
+      thought: "", risk: "low", description: "Klik tombol 'Simpan'", viewport: null,
+    };
+    setStream(snapshot({ planned, awaiting_confirm: true, confirm_each_step: true }));
+    mocked.control.mockResolvedValue({ state: "running" });
+    renderWithProviders(<RunLivePage />, { path: "/runs/9", route: "/runs/:runId" });
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: /Jalankan langkah/ }));
+    expect(mocked.control).toHaveBeenCalledWith(9, { command: "confirm_step" });
+    expect(screen.queryByRole("button", { name: /Jalankan langkah/ })).not.toBeInTheDocument();
+  });
+
   it("status Dijeda ditampilkan", async () => {
     setStream(snapshot({ control_state: "paused" }));
     renderWithProviders(<RunLivePage />, { path: "/runs/9", route: "/runs/:runId" });
