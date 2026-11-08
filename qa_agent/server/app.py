@@ -99,16 +99,11 @@ def create_app(settings: ServerSettings, *, secrets: SecretStore | None = None,
             "detail": "Windows Credential Manager tidak bisa diakses, jadi API key dan password tidak bisa disimpan. "
                       f"({exc})"})
 
+    from qa_agent.server import ws
     from qa_agent.server.api import apps, profiles, results, runs, stats
 
-    for module in (apps, profiles, runs, results, stats):
+    for module in (apps, profiles, runs, results, stats, ws):
         app.include_router(module.router)
-    try:
-        from qa_agent.server import ws
-
-        app.include_router(ws.router)
-    except ImportError:
-        pass
 
     @app.api_route("/api/{rest:path}", methods=["GET", "POST", "PATCH", "DELETE", "PUT"], include_in_schema=False)
     async def _api_not_found(rest: str):
