@@ -6,9 +6,11 @@ import threading
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
+from typing import Callable
 
+from qa_agent.agent.control import RunControl
 from qa_agent.agent.loop import AgentLoop
-from qa_agent.config import Config
+from qa_agent.config import Config, Credentials
 from qa_agent.drivers.web import WebDriver
 from qa_agent.evidence import Masker, RunStore
 from qa_agent.guard import Guard
@@ -54,13 +56,19 @@ class Runtime:
     loop: AgentLoop
     auth: AuthManager
     data_prefix: str
+    control: RunControl | None = None
+    on_event: Callable[[dict], None] = lambda e: None
 
 
 def build_runtime(cfg: Config, store: RunStore, project_dir: Path, *, environment: str,
-                  llm: LLMClient | None = None, now: datetime | None = None) -> Runtime:
+                  llm: LLMClient | None = None, now: datetime | None = None,
+                  credentials: Credentials | None = None, api_key: str | None = None,
+                  control: RunControl | None = None, on_event: Callable[[dict], None] | None = None,
+                  auth_state: Path | None = None) -> Runtime:
+    """Parameter eksplisit (kredensial, API key, control, on_event) dipakai dashboard; CLI membaca environment."""
     guard = Guard(environment, cfg.domains(), extra_keywords=cfg.guard.extra_risky_keywords,
                   login_endpoints=cfg.target.login_endpoints)
-    creds = cfg.credentials()
+    creds = credentials or cfg.credentials()
     masker = Masker([creds.password])
     driver = WebDriver(cfg.target.url, headless=cfg.browser.headless, viewport=cfg.browser.size,
                        request_filter=guard.should_block_request if guard.production else None,
@@ -68,9 +76,11 @@ def build_runtime(cfg: Config, store: RunStore, project_dir: Path, *, environmen
     driver.set_credentials(creds.username, creds.password)
     stop = StopFlag()
     data_prefix = f"QA-AUTO-{(now or datetime.now()):%Y%m%d-%H%M}"
-    llm = llm or build_llm(cfg)
+    llm = llm or build_llm(cfg, api_key)
+    emit = on_event or (lambda e: None)
     common = dict(driver=driver, llm=llm, guard=guard, store=store, masker=masker, data_prefix=data_prefix,
-                  max_steps=cfg.limits.max_steps_per_tc, vision=cfg.llm.vision, should_stop=stop)
+                  max_steps=cfg.limits.max_steps_per_tc, vision=cfg.llm.vision, should_stop=stop,
+                  control=control, on_event=emit)
     login_loop = AgentLoop(**common)
 
     def run_login(tc_id: str, goal: str):
@@ -81,9 +91,17 @@ def build_runtime(cfg: Config, store: RunStore, project_dir: Path, *, environmen
             driver.login_mode = False
 
     auth = AuthManager(driver, run_login,
-                       auth_state_path(project_dir, cfg.target.url, creds.role), creds.role)
+                       auth_state or auth_state_path(project_dir, cfg.target.url, creds.role), creds.role)
     return Runtime(cfg=cfg, store=store, environment=environment, driver=driver, llm=llm, guard=guard, masker=masker,
-                   stop=stop, loop=AgentLoop(**common), auth=auth, data_prefix=data_prefix)
+                   stop=stop, loop=AgentLoop(**common), auth=auth, data_prefix=data_prefix, control=control,
+                   on_event=emit)
+
+
+def _should_stop(rt: Runtime) -> Callable[[], bool]:
+    control = rt.control
+    if control is None:
+        return rt.stop
+    return lambda: rt.stop() or control.state == "stopped"
 
 
 def make_explorer(rt: Runtime) -> Explorer:
@@ -91,7 +109,8 @@ def make_explorer(rt: Runtime) -> Explorer:
     return Explorer(driver=rt.driver, llm=rt.llm, guard=rt.guard, store=rt.store, auth=rt.auth,
                     start_url=rt.cfg.target.url, max_screens=limits.explore_max_screens,
                     max_depth=limits.explore_max_depth, max_minutes=limits.explore_max_minutes,
-                    vision=rt.cfg.llm.vision, should_stop=rt.stop)
+                    vision=rt.cfg.llm.vision, should_stop=_should_stop(rt), control=rt.control,
+                    on_event=rt.on_event)
 
 
 def make_planner(rt: Runtime) -> DeepPlanner:
@@ -99,4 +118,5 @@ def make_planner(rt: Runtime) -> DeepPlanner:
 
 
 def make_runner(rt: Runtime) -> DeepRunner:
-    return DeepRunner(driver=rt.driver, loop=rt.loop, auth=rt.auth, store=rt.store, should_stop=rt.stop)
+    return DeepRunner(driver=rt.driver, loop=rt.loop, auth=rt.auth, store=rt.store, should_stop=_should_stop(rt),
+                      on_event=rt.on_event)

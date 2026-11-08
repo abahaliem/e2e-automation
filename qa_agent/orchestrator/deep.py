@@ -138,7 +138,11 @@ class DeepPlanner:
 
 def judge(outcome: LoopOutcome, tc: QaTestCase) -> tuple[str, str | None]:
     """Aturan status (spec §6.4). Request yang diblok mode production → Skipped (hasilnya tidak bisa dinilai);
-    selain itu HTTP 5xx / error JavaScript selalu menang → Fail."""
+    selain itu HTTP 5xx / error JavaScript selalu menang → Fail. Keputusan QA (lewati / akhiri manual) paling utama."""
+    if outcome.error_kind == "skipped_by_qa":
+        return "Blocked", None
+    if outcome.error_kind == "ended_by_qa":
+        return ("Pass", None) if outcome.status == "pass" else ("Fail", outcome.severity)
     if any(s.kind == "blocked_request" for s in outcome.signals):
         return "Skipped", None
     server_error = any(s.kind == "page_error" or (s.kind == "http_error" and (s.status or 0) >= 500) for s in outcome.signals)
@@ -172,12 +176,20 @@ def is_logout_case(tc: QaTestCase) -> bool:
 
 class DeepRunner:
     def __init__(self, *, driver: Driver, loop: AgentLoop, auth: AuthManager | None, store: RunStore,
-                 should_stop: Callable[[], bool] = lambda: False) -> None:
+                 should_stop: Callable[[], bool] = lambda: False,
+                 on_event: Callable[[dict], None] = lambda e: None) -> None:
         self.driver = driver
         self.loop = loop
         self.auth = auth
         self.store = store
         self.should_stop = should_stop
+        self.on_event = on_event
+
+    def _emit(self, event: dict) -> None:
+        try:
+            self.on_event(event)
+        except Exception:
+            pass
 
     def execute(self, cases: list[QaTestCase], *, needs_auth: bool) -> list[QaTestCase]:
         self.loop.relogin = self.auth.relogin if (needs_auth and self.auth is not None) else None
@@ -187,22 +199,26 @@ class DeepRunner:
             if self.should_stop():
                 break
             self.store.drop_steps(tc.id)
+            self._emit({"type": "tc.started", "tc_id": tc.id, "title": tc.title})
             try:
                 self._prepare(tc, needs_auth)
                 outcome = self.loop.run(tc.id, goal_for(tc), allow_logout=is_logout_case(tc))
                 if outcome.error_kind == "interrupted":
+                    self._emit({"type": "tc.finished", "tc_id": tc.id, "status": None})
                     break  # biarkan status kosong supaya dijalankan ulang saat resume
                 tc.status_ai, tc.severity = judge(outcome, tc)
                 tc.actual = outcome.actual or outcome.reason
                 tc.ai_note = outcome.reason if outcome.final == "blocked" else ""
             except (LLMError, LoginFailed):
                 self.store.write_testcases(cases)
+                self._emit({"type": "tc.finished", "tc_id": tc.id, "status": None})
                 raise
             except Exception as e:  # satu test case gagal tidak menghentikan run
                 tc.status_ai = "Blocked"
                 tc.actual = f"Error sistem: {type(e).__name__}: {e}"
                 self._recover()
             self.store.write_testcases(cases)
+            self._emit({"type": "tc.finished", "tc_id": tc.id, "status": tc.status_ai})
         return cases
 
     def _prepare(self, tc: QaTestCase, needs_auth: bool) -> None:
