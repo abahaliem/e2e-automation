@@ -273,6 +273,44 @@ class WebDriver:
         except PlaywrightError:
             locator.select_option(value=value)
 
+    def viewport_size(self) -> dict:
+        width, height = self.viewport
+        return {"width": width, "height": height}
+
+    def manual_input(self, event: dict) -> ActionResult:
+        """Input manual QA dari layar live. Koordinat ternormalisasi 0..1 dikali ukuran viewport.
+
+        Tidak lewat Guard kata kunci; filter jaringan production (context.route) tetap aktif.
+        """
+        kind = event.get("kind")
+        try:
+            if kind == "click":
+                width, height = self.viewport
+                x = min(max(float(event["x"]), 0.0), 1.0) * width
+                y = min(max(float(event["y"]), 0.0), 1.0) * height
+                self.page.mouse.click(x, y)
+            elif kind == "type":
+                self.page.keyboard.type(str(event.get("text", "")))
+            elif kind == "key":
+                self.page.keyboard.press(str(event["key"]))
+            elif kind == "scroll":
+                self.page.mouse.wheel(0, int(event.get("dy", 0)))
+            else:
+                return ActionResult(ok=False, error=f"Jenis input manual tidak dikenal: {kind}")
+            if kind in ("click", "key"):
+                # Klik mouse mentah kembali sebelum navigasi/submit dimulai; beri waktu request berangkat.
+                self.page.wait_for_timeout(300)
+            self._settle()
+            return ActionResult(ok=True)
+        except (KeyError, TypeError, ValueError) as e:
+            return ActionResult(ok=False, error=f"Input manual tidak valid: {e}")
+        except PlaywrightTimeout as e:
+            return ActionResult(ok=False, error=f"Timeout: {_first_line(e)}")
+        except PlaywrightError as e:
+            return ActionResult(ok=False, error=_first_line(e), fatal=_is_fatal(e))
+        except DriverCrashed as e:
+            return ActionResult(ok=False, error=str(e), fatal=True)
+
     def execute(self, action: Action, element: Element | None) -> ActionResult:
         kind = action.action
         if kind in ("click", "type", "select"):
