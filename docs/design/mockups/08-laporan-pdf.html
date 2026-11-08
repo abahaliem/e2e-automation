@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<title>Laporan Hasil Pengujian - Web HR modul Pengguna</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/@phosphor-icons/web@2.1.1"></script>
+<script src="assets/theme.js"></script>
+<style>body{font-family:Geist,system-ui,sans-serif;-webkit-font-smoothing:antialiased}</style>
+</head>
+<body class="bg-[#e4e7ec] text-fg py-10">
+<article class="mx-auto w-[860px] bg-ink-900 shadow-[0_8px_40px_rgba(30,40,60,0.12)] rounded-sm px-14 py-12 flex flex-col gap-10">
+
+  <!-- Kepala dokumen -->
+  <header class="flex flex-col gap-6 border-b-2 border-fg pb-8">
+    <div class="flex items-center justify-between text-sm">
+      <div class="flex items-center gap-2"><div class="w-6 h-6 rounded-md bg-accent grid place-items-center"><i class="ph-bold ph-scan text-white text-sm"></i></div><span class="font-semibold">QA Agent</span></div>
+      <span class="font-mono text-xs text-fg-dim">RUN-20261105-1012</span>
+    </div>
+    <div>
+      <h1 class="text-3xl font-semibold tracking-tight">Laporan Hasil Pengujian</h1>
+      <p class="mt-1 text-lg text-fg-muted">Web HR, modul Pengguna</p>
+    </div>
+    <dl class="grid grid-cols-3 gap-x-8 gap-y-4 text-sm">
+      <div><dt class="text-fg-dim">Aplikasi</dt><dd class="font-mono mt-0.5">hr-dev.kantor.local</dd></div>
+      <div><dt class="text-fg-dim">Environment</dt><dd class="mt-0.5">Dev / UAT</dd></div>
+      <div><dt class="text-fg-dim">Tanggal pengujian</dt><dd class="mt-0.5">5 November 2026, 10.12</dd></div>
+      <div><dt class="text-fg-dim">Durasi</dt><dd class="mt-0.5">12 menit</dd></div>
+      <div><dt class="text-fg-dim">Model AI</dt><dd class="font-mono mt-0.5">z-ai/glm-5.3-flash</dd></div>
+      <div><dt class="text-fg-dim">Status review</dt><dd class="mt-0.5">3 dari 4 temuan sudah direview</dd></div>
+    </dl>
+  </header>
+
+  <!-- Ringkasan -->
+  <section class="flex flex-col gap-4">
+    <h2 class="text-lg font-semibold">Ringkasan</h2>
+    <div class="grid grid-cols-5 border border-ink-700 rounded-lg divide-x divide-ink-700 text-center">
+      <div class="py-4"><div class="text-2xl font-semibold">15</div><div class="text-xs text-fg-muted mt-1">Test case</div></div>
+      <div class="py-4"><div class="text-2xl font-semibold text-pass">11</div><div class="text-xs text-fg-muted mt-1">Pass</div></div>
+      <div class="py-4"><div class="text-2xl font-semibold text-fail">2</div><div class="text-xs text-fg-muted mt-1">Fail</div></div>
+      <div class="py-4"><div class="text-2xl font-semibold text-review">1</div><div class="text-xs text-fg-muted mt-1">Perlu Review</div></div>
+      <div class="py-4"><div class="text-2xl font-semibold text-fg-muted">1</div><div class="text-xs text-fg-muted mt-1">Blocked</div></div>
+    </div>
+    <p class="text-sm text-fg-muted leading-relaxed max-w-[65ch]">Pass rate 73%. Ditemukan 2 bug pada form Tambah Pengguna: input nama berapostrof menyebabkan error server, dan format email tidak divalidasi. Satu test case diblok karena tombol Hapus tidak boleh dieksekusi di run ini.</p>
+  </section>
+
+  <!-- Temuan -->
+  <section class="flex flex-col gap-5">
+    <h2 class="text-lg font-semibold">Temuan</h2>
+
+    <div class="border border-ink-700 rounded-lg overflow-hidden">
+      <div class="px-5 py-3 bg-ink-850 border-b border-ink-700 flex items-center justify-between">
+        <div class="flex items-center gap-3"><span class="font-mono text-xs text-fg-dim">BUG-001</span><span class="font-semibold">Nama dengan apostrof menyebabkan error server</span></div>
+        <span class="px-2 py-0.5 rounded text-xs font-medium bg-fail/10 text-fail">Fail, Major</span>
+      </div>
+      <div class="p-5 grid grid-cols-[1fr_260px] gap-6 text-sm">
+        <div class="flex flex-col gap-4">
+          <div><div class="text-fg-dim text-xs mb-1">Langkah reproduksi (TC-PEN-003)</div>
+            <ol class="list-decimal pl-5 flex flex-col gap-0.5">
+              <li>Buka menu Pengguna, klik Tambah Pengguna</li>
+              <li>Isi Nama "O'Brien", Email "obrien@demo.local", Umur "40"</li>
+              <li>Klik tombol Simpan</li>
+            </ol>
+          </div>
+          <div class="grid grid-cols-2 gap-4">
+            <div><div class="text-fg-dim text-xs mb-1">Expected</div>Pengguna tersimpan dan muncul di daftar</div>
+            <div><div class="text-fg-dim text-xs mb-1">Actual</div>Halaman Internal Server Error</div>
+          </div>
+          <div><div class="text-fg-dim text-xs mb-1">Bukti teknis</div><span class="font-mono text-xs text-fail">HTTP 500 POST /users</span></div>
+          <div><div class="text-fg-dim text-xs mb-1">Catatan reviewer</div>Bug valid. Nama dengan tanda petik umum di data karyawan.</div>
+        </div>
+        <figure>
+          <div class="rounded-md border border-ink-700 bg-white aspect-[4/3] overflow-hidden"><img src="assets/tc3-hasil-500.png" class="w-[260%] max-w-none" alt="Evidence error 500"></div>
+          <figcaption class="mt-1.5 text-xs text-fg-muted">Setelah klik Simpan</figcaption>
+        </figure>
+      </div>
+    </div>
+
+    <div class="border border-ink-700 rounded-lg overflow-hidden">
+      <div class="px-5 py-3 bg-ink-850 border-b border-ink-700 flex items-center justify-between">
+        <div class="flex items-center gap-3"><span class="font-mono text-xs text-fg-dim">BUG-002</span><span class="font-semibold">Email tanpa format valid tetap tersimpan</span></div>
+        <span class="px-2 py-0.5 rounded text-xs font-medium bg-fail/10 text-fail">Fail, Minor</span>
+      </div>
+      <div class="p-5 grid grid-cols-[1fr_260px] gap-6 text-sm">
+        <div class="flex flex-col gap-4">
+          <div><div class="text-fg-dim text-xs mb-1">Langkah reproduksi (TC-PEN-002)</div>
+            <ol class="list-decimal pl-5 flex flex-col gap-0.5">
+              <li>Buka menu Pengguna, klik Tambah Pengguna</li>
+              <li>Isi Email dengan "bukan-email", lengkapi Nama dan Umur</li>
+              <li>Klik tombol Simpan</li>
+            </ol>
+          </div>
+          <div class="grid grid-cols-2 gap-4">
+            <div><div class="text-fg-dim text-xs mb-1">Expected</div>Muncul pesan validasi format email</div>
+            <div><div class="text-fg-dim text-xs mb-1">Actual</div>Data tersimpan tanpa pesan apa pun</div>
+          </div>
+          <div><div class="text-fg-dim text-xs mb-1">Catatan reviewer</div>Dinaikkan dari Perlu Review menjadi Fail.</div>
+        </div>
+        <figure>
+          <div class="rounded-md border border-ink-700 bg-white aspect-[4/3] overflow-hidden"><img src="assets/tc2-hasil-daftar.png" class="w-[260%] max-w-none" alt="Evidence email tersimpan"></div>
+          <figcaption class="mt-1.5 text-xs text-fg-muted">Baris terakhir: email "bukan-email"</figcaption>
+        </figure>
+      </div>
+    </div>
+  </section>
+
+  <!-- Daftar test case -->
+  <section class="flex flex-col gap-4">
+    <h2 class="text-lg font-semibold">Daftar test case</h2>
+    <table class="w-full text-sm border border-ink-700">
+      <thead class="bg-ink-850 text-left text-xs text-fg-muted">
+        <tr><th class="px-3 py-2 font-medium border-b border-ink-700">ID</th><th class="px-3 py-2 font-medium border-b border-ink-700">Skenario</th><th class="px-3 py-2 font-medium border-b border-ink-700">Tipe</th><th class="px-3 py-2 font-medium border-b border-ink-700">Status</th></tr>
+      </thead>
+      <tbody class="divide-y divide-ink-700">
+        <tr><td class="px-3 py-2 font-mono text-xs">TC-PEN-001</td><td class="px-3 py-2">Tambah pengguna valid</td><td class="px-3 py-2 text-fg-muted">Positif</td><td class="px-3 py-2 text-pass font-medium">Pass</td></tr>
+        <tr><td class="px-3 py-2 font-mono text-xs">TC-PEN-002</td><td class="px-3 py-2">Validasi format email</td><td class="px-3 py-2 text-fg-muted">Validasi</td><td class="px-3 py-2 text-fail font-medium">Fail</td></tr>
+        <tr><td class="px-3 py-2 font-mono text-xs">TC-PEN-003</td><td class="px-3 py-2">Nama dengan apostrof</td><td class="px-3 py-2 text-fg-muted">Boundary</td><td class="px-3 py-2 text-fail font-medium">Fail</td></tr>
+        <tr><td class="px-3 py-2 font-mono text-xs">TC-PEN-004</td><td class="px-3 py-2">Umur diisi huruf</td><td class="px-3 py-2 text-fg-muted">Negatif</td><td class="px-3 py-2 text-pass font-medium">Pass</td></tr>
+        <tr><td class="px-3 py-2 font-mono text-xs">TC-PEN-005</td><td class="px-3 py-2">Nama dikosongkan</td><td class="px-3 py-2 text-fg-muted">Validasi</td><td class="px-3 py-2 text-pass font-medium">Pass</td></tr>
+        <tr><td class="px-3 py-2 font-mono text-xs">TC-PEN-006</td><td class="px-3 py-2">Ekspor daftar pengguna</td><td class="px-3 py-2 text-fg-muted">Positif</td><td class="px-3 py-2 text-review font-medium">Perlu Review</td></tr>
+        <tr><td class="px-3 py-2 font-mono text-xs">TC-PEN-007</td><td class="px-3 py-2">Edit data pengguna</td><td class="px-3 py-2 text-fg-muted">Positif</td><td class="px-3 py-2 text-pass font-medium">Pass</td></tr>
+        <tr><td class="px-3 py-2 font-mono text-xs">TC-PEN-008</td><td class="px-3 py-2">Hapus pengguna</td><td class="px-3 py-2 text-fg-muted">Positif</td><td class="px-3 py-2 text-fg-muted font-medium">Blocked</td></tr>
+        <tr><td class="px-3 py-2 font-mono text-xs">TC-PEN-009</td><td class="px-3 py-2">Umur batas maksimum</td><td class="px-3 py-2 text-fg-muted">Boundary</td><td class="px-3 py-2 text-pass font-medium">Pass</td></tr>
+        <tr><td class="px-3 py-2 font-mono text-xs text-fg-dim" colspan="4">TC-PEN-010 sampai TC-PEN-015: semua Pass, detail di lampiran</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <footer class="pt-6 border-t border-ink-700 flex items-center justify-between text-xs text-fg-dim">
+    <span>Dibuat otomatis oleh QA Agent dan direview oleh QA. Dokumen internal.</span>
+    <span>Halaman 1 dari 4</span>
+  </footer>
+</article>
+</body>
+</html>

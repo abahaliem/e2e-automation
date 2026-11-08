@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<title>Pengaturan AI - QA Agent</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/@phosphor-icons/web@2.1.1"></script>
+<script src="assets/theme.js"></script>
+<style>body{font-family:Geist,system-ui,sans-serif;-webkit-font-smoothing:antialiased}</style>
+</head>
+<body class="bg-ink-950 text-fg min-h-[100dvh]">
+<div class="grid grid-cols-[232px_1fr] min-h-[100dvh]">
+
+  <aside class="border-r border-ink-700 bg-ink-900 flex flex-col">
+    <div class="h-16 px-5 flex items-center gap-2.5 border-b border-ink-700">
+      <div class="w-8 h-8 rounded-lg bg-accent grid place-items-center"><i class="ph-bold ph-scan text-white text-lg"></i></div>
+      <span class="font-semibold tracking-tight">QA Agent</span>
+    </div>
+    <nav class="p-3 flex flex-col gap-1 text-sm">
+      <a class="flex items-center gap-3 px-3 py-2 rounded-lg text-fg-muted"><i class="ph ph-gauge text-lg"></i>Dashboard</a>
+      <a class="flex items-center gap-3 px-3 py-2 rounded-lg text-fg-muted"><i class="ph ph-play-circle text-lg"></i>Run baru</a>
+      <a class="flex items-center gap-3 px-3 py-2 rounded-lg text-fg-muted"><i class="ph ph-clock-counter-clockwise text-lg"></i>Riwayat run</a>
+      <a class="flex items-center gap-3 px-3 py-2 rounded-lg text-fg-muted"><i class="ph ph-squares-four text-lg"></i>Aplikasi</a>
+      <a class="flex items-center gap-3 px-3 py-2 rounded-lg text-fg-muted"><i class="ph ph-device-mobile text-lg"></i>Perangkat</a>
+      <a class="flex items-center gap-3 px-3 py-2 rounded-lg bg-ink-800 text-fg"><i class="ph ph-gear-six text-lg text-accent"></i>Pengaturan</a>
+    </nav>
+    <div class="mt-auto m-3 p-3 rounded-lg border border-ink-700 text-xs">
+      <div class="flex items-center gap-2 text-fg"><span class="w-2 h-2 rounded-full bg-pass"></span>AI kantor terhubung</div>
+      <div class="mt-1 font-mono text-fg-dim">z-ai/glm-5.3-flash</div>
+    </div>
+  </aside>
+
+  <main class="px-10 py-8">
+    <header>
+      <h1 class="text-2xl font-semibold tracking-tight">Pengaturan</h1>
+      <div class="mt-5 flex gap-6 text-sm border-b border-ink-700">
+        <a class="pb-3 border-b-2 border-accent font-medium">Model AI</a>
+        <a class="pb-3 text-fg-muted">Skill QA</a>
+        <a class="pb-3 text-fg-muted">Akun test</a>
+        <a class="pb-3 text-fg-muted">Keamanan</a>
+        <a class="pb-3 text-fg-muted">Laporan</a>
+      </div>
+    </header>
+
+    <div class="mt-8 grid grid-cols-[minmax(0,1fr)_320px] gap-10">
+      <!-- Form profil AI -->
+      <section class="rounded-xl border border-ink-700 bg-ink-900 p-6 flex flex-col gap-6">
+        <div class="flex items-start justify-between">
+          <div>
+            <h2 class="font-semibold">AI kantor (GLM)</h2>
+            <p class="text-sm text-fg-muted mt-1">Profil yang dipakai agent untuk berpikir dan membaca layar.</p>
+          </div>
+          <span class="text-xs px-2 py-1 rounded-md bg-accent-soft text-accent border border-accent-line font-medium">Default</span>
+        </div>
+
+        <div class="flex flex-col gap-2">
+          <label class="text-sm font-medium">Jenis API</label>
+          <div class="inline-flex p-1 rounded-lg bg-ink-850 border border-ink-700 text-sm w-fit">
+            <button class="px-4 py-1.5 rounded-md bg-ink-900 border border-ink-700 shadow-sm font-medium">OpenAI-compatible</button>
+            <button class="px-4 py-1.5 rounded-md text-fg-muted">Anthropic (Claude)</button>
+          </div>
+          <p class="text-xs text-fg-muted">Cocok untuk AI kantor (GLM, DeepSeek, MiniMax), OpenAI GPT, Azure OpenAI, Ollama, atau LM Studio.</p>
+        </div>
+
+        <div class="flex flex-col gap-2">
+          <label class="text-sm font-medium">Base URL endpoint</label>
+          <div class="flex items-center gap-3 h-11 px-4 rounded-lg bg-ink-900 border border-ink-600">
+            <i class="ph ph-link-simple text-fg-muted"></i>
+            <span class="font-mono text-sm">http://192.168.151.121/v1</span>
+          </div>
+          <p class="text-xs text-fg-muted">Untuk OpenAI GPT isi <span class="font-mono">https://api.openai.com/v1</span>.</p>
+        </div>
+
+        <div class="flex flex-col gap-2">
+          <label class="text-sm font-medium">API key</label>
+          <div class="flex gap-2">
+            <div class="flex-1 flex items-center gap-3 h-11 px-4 rounded-lg bg-ink-900 border border-ink-600">
+              <i class="ph ph-key text-fg-muted"></i>
+              <span class="font-mono text-sm tracking-wider">sk-••••••••••••••••3f9a</span>
+              <i class="ph ph-eye ml-auto text-fg-muted"></i>
+            </div>
+            <button class="h-11 px-4 rounded-lg border border-ink-600 text-sm">Ganti</button>
+          </div>
+          <p class="text-xs text-fg-muted flex items-center gap-1.5"><i class="ph ph-lock-simple"></i>Disimpan terenkripsi di laptop ini. Tidak pernah masuk ke laporan atau Git.</p>
+        </div>
+
+        <div class="flex flex-col gap-2">
+          <div class="flex items-center justify-between">
+            <label class="text-sm font-medium">Model</label>
+            <button class="text-sm text-accent flex items-center gap-1.5"><i class="ph ph-arrows-clockwise"></i>Ambil daftar model</button>
+          </div>
+          <div class="flex flex-wrap gap-2">
+            <button class="h-9 px-3.5 rounded-lg border border-accent-line bg-accent-soft text-sm font-mono text-accent flex items-center gap-2"><i class="ph-fill ph-check-circle"></i>z-ai/glm-5.3-flash</button>
+            <button class="h-9 px-3.5 rounded-lg border border-ink-700 text-sm font-mono text-fg-muted">deepseek/deepseek-v4-flash</button>
+            <button class="h-9 px-3.5 rounded-lg border border-ink-700 text-sm font-mono text-fg-muted">minimax/minimax-m3</button>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-2 gap-5">
+          <label class="flex items-start gap-3 p-4 rounded-lg border border-ink-700">
+            <span class="mt-0.5 w-9 h-5 rounded-full bg-accent relative shrink-0"><span class="absolute right-0.5 top-0.5 w-4 h-4 rounded-full bg-white"></span></span>
+            <span><span class="text-sm font-medium block">Bisa membaca gambar</span><span class="text-xs text-fg-muted">Screenshot layar ikut dikirim ke AI</span></span>
+          </label>
+          <div class="flex flex-col gap-2">
+            <label class="text-sm font-medium">Batas waktu jawaban</label>
+            <div class="h-11 px-4 rounded-lg bg-ink-900 border border-ink-600 flex items-center justify-between text-sm"><span>60 detik</span><i class="ph ph-caret-down text-fg-muted"></i></div>
+          </div>
+        </div>
+
+        <!-- Hasil tes koneksi -->
+        <div class="rounded-lg border border-pass/30 bg-pass/5 px-4 py-3 text-sm flex items-start gap-3">
+          <i class="ph-fill ph-check-circle text-pass text-lg"></i>
+          <div>
+            <div class="font-medium text-fg">Terhubung</div>
+            <div class="text-fg-muted">Teks OK dan gambar OK. Waktu respons 1,4 detik.</div>
+          </div>
+        </div>
+
+        <div class="flex items-center gap-3">
+          <button class="h-11 px-6 rounded-lg bg-accent text-white font-semibold flex items-center gap-2"><i class="ph ph-floppy-disk"></i>Simpan</button>
+          <button class="h-11 px-5 rounded-lg border border-ink-600 flex items-center gap-2"><i class="ph ph-plugs-connected"></i>Tes koneksi</button>
+        </div>
+      </section>
+
+      <!-- Profil tersimpan -->
+      <aside class="flex flex-col gap-3">
+        <div class="flex items-center justify-between">
+          <h2 class="text-sm font-medium text-fg-muted">Profil AI</h2>
+          <button class="text-sm text-accent flex items-center gap-1"><i class="ph ph-plus"></i>Tambah</button>
+        </div>
+        <div class="rounded-xl border border-ink-700 bg-ink-900 divide-y divide-ink-700">
+          <div class="p-4 bg-accent-soft">
+            <div class="flex items-center justify-between"><span class="font-medium">AI kantor (GLM)</span><i class="ph-fill ph-check-circle text-accent"></i></div>
+            <div class="font-mono text-xs text-fg-dim mt-1">192.168.151.121</div>
+          </div>
+          <div class="p-4">
+            <div class="font-medium">OpenAI GPT</div>
+            <div class="font-mono text-xs text-fg-dim mt-1">api.openai.com, gpt-4.1-mini</div>
+          </div>
+          <div class="p-4">
+            <div class="font-medium">Claude</div>
+            <div class="font-mono text-xs text-fg-dim mt-1">anthropic, claude-sonnet-5-5</div>
+          </div>
+        </div>
+        <p class="text-xs text-fg-muted">Profil bisa dipilih per run di layar Run baru.</p>
+      </aside>
+    </div>
+  </main>
+</div>
+</body>
+</html>
