@@ -179,6 +179,19 @@ def test_resume_when_running_rejected():
         c.resume()
 
 
+def test_idle_called_while_paused():
+    c = RunControl()
+    calls = []
+    c.idle = lambda: calls.append(1)
+    c.pause()
+    t, box = run_in_thread(lambda: c.wait_before_decide(timeout=3))
+    time.sleep(0.5)
+    c.resume()
+    t.join(2)
+    assert box["value"].kind == "continue"
+    assert len(calls) >= 2
+
+
 def test_waiting_flag_for_snapshot():
     c = RunControl(confirm_each_step=True)
     t, _ = run_in_thread(lambda: c.wait_before_execute(timeout=3))

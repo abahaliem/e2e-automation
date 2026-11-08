@@ -8,6 +8,7 @@ from urllib.parse import urlsplit
 from pydantic import BaseModel, Field, ValidationError
 
 from qa_agent.agent import prompts
+from qa_agent.agent.control import RunControl
 from qa_agent.agent.parser import ActionParseError, extract_json
 from qa_agent.drivers.base import Driver, DriverCrashed
 from qa_agent.evidence import RunStore, now_iso
@@ -53,7 +54,11 @@ class Explorer:
         vision: bool = True,
         clock: Callable[[], float] = time.monotonic,
         should_stop: Callable[[], bool] = lambda: False,
+        control: RunControl | None = None,
+        on_event: Callable[[dict], None] = lambda e: None,
     ) -> None:
+        self.control = control
+        self.on_event = on_event
         self.driver = driver
         self.llm = llm
         self.guard = guard
@@ -84,6 +89,9 @@ class Explorer:
         visited = {normalize_location(s.url) for s in app_map.screens}
         queue: deque[tuple[str, int, str | None]] = deque([(self.driver.current_url, 0, None)])
         while queue and not self._exhausted(app_map, deadline):
+            self._checkpoint()
+            if self.should_stop():
+                break
             target, depth, parent = queue.popleft()
             key = normalize_location(target)
             if key in visited or not self.guard.is_allowed_url(target):
@@ -102,6 +110,18 @@ class Explorer:
                     if normalize_location(next_url) not in visited:
                         queue.append((next_url, depth + 1, info.fingerprint))
         return app_map
+
+    def _checkpoint(self) -> None:
+        """Titik kontrol explore: jeda menahan di sini; input manual saat ambil alih dijalankan."""
+        if self.control is None:
+            return
+        while True:
+            d = self.control.wait_before_decide()
+            if d.kind != "manual_input":
+                return
+            manual = getattr(self.driver, "manual_input", None)
+            if manual is not None:
+                manual(d.input or {})
 
     def _exhausted(self, app_map: AppMap, deadline: float) -> bool:
         return len(app_map.screens) >= self.max_screens or self.clock() >= deadline or self.should_stop()
@@ -148,6 +168,11 @@ class Explorer:
         )
         app_map.screens.append(info)
         self.store.write_app_map(app_map)
+        try:
+            self.on_event({"type": "screen.added", "url": info.url, "module": info.module,
+                           "page_name": info.page_name, "screenshot": shot})
+        except Exception:
+            pass
         self.store.append_step(StepRecord(
             tc_id="EXPLORE", step_no=n, timestamp=now_iso(), location=obs.location, fingerprint=obs.fingerprint,
             thought=summary.purpose, action="navigate", value=obs.location, signals=obs.signals, screenshot=shot,

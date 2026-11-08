@@ -9,8 +9,9 @@ import threading
 import time
 from collections import deque
 from dataclasses import dataclass, field
-from typing import Literal
+from typing import Callable, Literal
 
+IDLE_INTERVAL = 0.15
 ControlState = Literal["running", "paused", "takeover", "stopped"]
 DecisionKind = Literal["continue", "think_again", "skip", "stop", "end_case", "manual_input"]
 
@@ -40,6 +41,8 @@ class RunControl:
         self._end: tuple[str, str] | None = None
         self._confirmed = False
         self._awaiting_confirm = False
+        # Dipanggil berkala dari worker thread selama menunggu (dijeda/ambil alih/konfirmasi).
+        self.idle: Callable[[], None] | None = None
 
     # ---------- properti ----------
     @property
@@ -181,7 +184,19 @@ class RunControl:
                     remaining = None if deadline is None else deadline - time.monotonic()
                     if remaining is not None and remaining <= 0:
                         raise TimeoutError("Menunggu titik kontrol terlalu lama")
-                    self._cond.wait(remaining)
+                    idle = self.idle
+                    if idle is None:
+                        self._cond.wait(remaining)
+                        continue
+                    self._cond.wait(IDLE_INTERVAL if remaining is None else min(remaining, IDLE_INTERVAL))
+                    # Panggil idle (mis. memproses frame live Playwright) tanpa memegang lock.
+                    self._cond.release()
+                    try:
+                        idle()
+                    except Exception:
+                        pass
+                    finally:
+                        self._cond.acquire()
             finally:
                 self._awaiting_confirm = False
 
