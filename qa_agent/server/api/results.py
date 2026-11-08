@@ -57,11 +57,11 @@ def case_detail(run_id: int, tc_id: str, request: Request) -> dict:
     tc = next((c for c in _cases(rs) if c.id == tc_id), None)
     if tc is None:
         raise deps.not_found("Test case")
-    steps, technical = [], []
+    log, technical = [], []
     for s in rs.read_steps():
         if s.tc_id != tc_id:
             continue
-        steps.append({
+        log.append({
             "step_no": s.step_no, "action": s.action, "actor": s.actor,
             "text": humanize(s.action, s.element, s.value), "result": s.result, "guard": s.guard,
             "thought": s.thought, "location": s.location,
@@ -71,7 +71,8 @@ def case_detail(run_id: int, tc_id: str, request: Request) -> dict:
             text = signal_text(sig)
             if text not in technical:
                 technical.append(text)
-    return {**_case_out(tc), "steps": steps, "technical": technical}
+    # "steps" = langkah rencana test case; "log" = langkah yang benar-benar dijalankan (evidence)
+    return {**_case_out(tc), "log": log, "technical": technical}
 
 
 @router.patch("/runs/{run_id}/cases/{tc_id}")

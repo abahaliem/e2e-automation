@@ -152,8 +152,9 @@ def test_cases_review_patch_updates_reports(ctx):
     cases = client.get(f"/api/runs/{run['id']}/cases").json()
     assert [c["id"] for c in cases] == ["TC-PEN-001", "TC-PEN-002", "TC-PEN-003"]
     detail = client.get(f"/api/runs/{run['id']}/cases/TC-PEN-003").json()
-    assert detail["expected"] == "Tersimpan" and detail["steps"][0]["text"]
-    assert detail["steps"][0]["screenshot_url"].startswith(f"/api/runs/{run['id']}/files/screenshots/")
+    assert detail["expected"] == "Tersimpan" and detail["log"][0]["text"]
+    assert detail["steps"] == ["Isi nama O'Brien", "Klik Simpan"]
+    assert detail["log"][0]["screenshot_url"].startswith(f"/api/runs/{run['id']}/files/screenshots/")
     assert any("HTTP 500" in s for s in detail["technical"])
     r = client.patch(f"/api/runs/{run['id']}/cases/TC-PEN-002",
                      json={"status_final": "Fail", "severity": "Major", "reviewer_note": "Bug valid"})

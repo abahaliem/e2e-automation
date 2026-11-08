@@ -151,14 +151,9 @@ export interface CaseStep {
   screenshot_url: string | null;
 }
 
-export interface CaseDetail extends TestCase {
-  steps_log?: never;
-  technical: string[];
-  steps: string[];
-}
-
-export interface CaseDetailResponse extends Omit<TestCase, "steps"> {
-  steps: CaseStep[];
+export interface CaseDetailResponse extends TestCase {
+  /** Langkah yang benar-benar dijalankan (evidence). `steps` = langkah rencana. */
+  log: CaseStep[];
   technical: string[];
 }
 
