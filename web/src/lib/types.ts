@@ -1,0 +1,245 @@
+export type Status = "Pass" | "Fail" | "Perlu Review" | "Blocked" | "Skipped";
+export type Severity = "Critical" | "Major" | "Minor";
+export type RunStatus = "queued" | "running" | "paused" | "completed" | "interrupted";
+export type ControlState = "running" | "paused" | "takeover" | "stopped";
+
+export interface Profile {
+  id: number;
+  name: string;
+  provider: "openai_compatible" | "anthropic";
+  base_url: string;
+  model: string;
+  vision: boolean;
+  timeout_seconds: number;
+  is_default: boolean;
+  api_key_masked: string;
+  has_api_key: boolean;
+}
+
+export interface ProfileInput {
+  name: string;
+  provider: Profile["provider"];
+  base_url: string;
+  model: string;
+  api_key?: string;
+  vision: boolean;
+  timeout_seconds: number;
+  is_default: boolean;
+}
+
+export interface App {
+  id: number;
+  name: string;
+  platform: "web" | "android";
+  url: string;
+  allowed_domains: string[];
+  login_endpoints: string[];
+  default_profile_id: number | null;
+  explored: boolean;
+  last_run_at: string | null;
+  accounts: number;
+}
+
+export interface AppInput {
+  name: string;
+  url: string;
+  allowed_domains: string[];
+  login_endpoints: string[];
+}
+
+export interface Account {
+  id: number;
+  app_id: number;
+  role: string;
+  username: string;
+  has_password: boolean;
+}
+
+export interface Run {
+  id: number;
+  app_id: number;
+  app_name: string;
+  platform: "web" | "android";
+  url: string;
+  mode: "explore" | "deep";
+  module: string | null;
+  environment: "dev" | "production";
+  profile_id: number | null;
+  profile_name: string;
+  account_id: number | null;
+  status: RunStatus;
+  started_at: string;
+  finished_at: string | null;
+  folder: string;
+  counts: Partial<Record<Status, number>>;
+  note: string;
+  model: string;
+  confirm_each_step: boolean;
+  active: boolean;
+  control_state: ControlState | null;
+}
+
+export interface RunInput {
+  app_id: number;
+  mode: "explore" | "deep";
+  module?: string | null;
+  prd_text?: string | null;
+  profile_id?: number | null;
+  account_id?: number | null;
+  environment: "dev" | "production";
+  confirm_each_step: boolean;
+}
+
+export type ControlCommand =
+  | "pause"
+  | "resume"
+  | "takeover"
+  | "release"
+  | "hint"
+  | "think_again"
+  | "skip"
+  | "stop"
+  | "end_case"
+  | "confirm_step"
+  | "input";
+
+export interface ControlInput {
+  command: ControlCommand;
+  text?: string;
+  status?: "pass" | "fail";
+  note?: string;
+  event?: ManualEvent;
+}
+
+export type ManualEvent =
+  | { kind: "click"; x: number; y: number }
+  | { kind: "type"; text: string }
+  | { kind: "key"; key: string }
+  | { kind: "scroll"; dy: number };
+
+export interface TestCase {
+  id: string;
+  module: string;
+  page: string;
+  title: string;
+  type: string;
+  priority: string;
+  precondition: string;
+  test_data: string;
+  steps: string[];
+  expected: string;
+  expected_source: string;
+  start_url: string;
+  status_ai: Status | null;
+  actual: string;
+  ai_note: string;
+  severity: Severity | null;
+  status_final: Status | null;
+  reviewer_note: string;
+  effective_status: Status | null;
+}
+
+export interface CaseStep {
+  step_no: number;
+  action: string;
+  actor: "ai" | "manual";
+  text: string;
+  result: string;
+  guard: string;
+  thought: string;
+  location: string;
+  screenshot_url: string | null;
+}
+
+export interface CaseDetail extends TestCase {
+  steps_log?: never;
+  technical: string[];
+  steps: string[];
+}
+
+export interface CaseDetailResponse extends Omit<TestCase, "steps"> {
+  steps: CaseStep[];
+  technical: string[];
+}
+
+export interface ReviewInput {
+  status_final?: Status | null;
+  severity?: Severity | null;
+  reviewer_note?: string;
+}
+
+export interface Stats {
+  total_runs: number;
+  web_runs: number;
+  android_runs: number;
+  cases_executed: number;
+  findings: number;
+  fail: number;
+  review: number;
+  pass_rate: number | null;
+  pass_rate_prev: number | null;
+  total_runs_prev: number;
+  findings_prev: number;
+  running: number;
+  days: number;
+}
+
+export interface Finding {
+  run_id: number;
+  tc_id: string;
+  title: string;
+  module: string;
+  status: Status;
+  severity: Severity | null;
+  app_name: string;
+  platform: string;
+  started_at: string;
+}
+
+export interface StepEvent {
+  type: "step.done";
+  tc_id: string;
+  step_no: number;
+  result: string;
+  screenshot: string | null;
+  description: string;
+  actor: "ai" | "manual";
+  seq?: number;
+}
+
+export interface PlannedEvent {
+  type: "step.planned";
+  tc_id: string;
+  step_no: number;
+  action: string;
+  element: { role: string; name: string; bbox: [number, number, number, number] } | null;
+  thought: string;
+  risk: string;
+  description: string;
+  viewport: { width: number; height: number } | null;
+}
+
+export interface Snapshot {
+  type: "snapshot";
+  run_id: number;
+  seq: number;
+  status: RunStatus;
+  control_state: ControlState | null;
+  awaiting_confirm: boolean;
+  confirm_each_step: boolean;
+  note: string;
+  counts: Partial<Record<Status, number>>;
+  current_tc: string | null;
+  planned: PlannedEvent | null;
+  steps: StepEvent[];
+  cases: { tc_id: string; title: string; status: Status | null }[];
+  screens: number;
+}
+
+export type RunEvent = { type: string; seq?: number; [key: string]: unknown };
+
+export interface Frame {
+  url: string;
+  width: number;
+  height: number;
+}
