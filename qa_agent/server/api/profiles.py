@@ -10,9 +10,7 @@ from fastapi import APIRouter, Request, Response
 from pydantic import BaseModel, Field, ValidationInfo, field_validator
 
 from qa_agent.imaging import solid_png
-from qa_agent.llm.anthropic_client import AnthropicClient
 from qa_agent.llm.base import LLMClient, LLMError, Message
-from qa_agent.llm.openai_compat import OpenAICompatClient
 from qa_agent.server.api import deps
 from qa_agent.server.secrets import mask_secret
 from qa_agent.server.store import ProfileRow
@@ -71,7 +69,11 @@ def client_for(request: Request, p: ProfileRow) -> LLMClient:
         return factory(p)
     key = deps.secrets(request).get(f"ai-profile:{p.id}") or ""
     if p.provider == "anthropic":
+        from qa_agent.llm.anthropic_client import AnthropicClient
+
         return AnthropicClient(model=p.model, api_key=key, timeout=p.timeout_seconds, vision=p.vision)
+    from qa_agent.llm.openai_compat import OpenAICompatClient
+
     return OpenAICompatClient(model=p.model, api_key=key, base_url=p.base_url, timeout=p.timeout_seconds,
                               vision=p.vision)
 
