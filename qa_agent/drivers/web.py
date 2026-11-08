@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import base64
+import time
 from pathlib import Path
 from typing import Any, Callable
 from urllib.parse import urljoin, urlsplit
@@ -17,6 +19,9 @@ from qa_agent.orchestrator.fingerprint import fingerprint
 TRACKED_RESOURCES = {"document", "xhr", "fetch"}
 BENIGN_JS_ERRORS = ("ResizeObserver loop",)
 _FATAL_MARKERS = ("has been closed", "Target closed", "Browser closed")
+SCREENCAST_FPS = 6
+SCREENCAST_MAX_WIDTH = 1280
+SCREENCAST_QUALITY = 60
 
 
 def _first_line(e: Exception) -> str:
@@ -75,6 +80,11 @@ class WebDriver:
         self._frames: list[Any] = []
         self._signals: list[Signal] = []
         self._credentials: dict[str, str] = {}
+        # layar live (CDP screencast)
+        self._frame_sink: Callable[[bytes, dict], None] | None = None
+        self._streaming = False
+        self._cdp: Any = None
+        self._last_frame_at = 0.0
 
     # ---------- siklus hidup ----------
     def start(self) -> None:
@@ -82,6 +92,7 @@ class WebDriver:
         self._browser = self._pw.chromium.launch(headless=self.headless)
 
     def stop(self) -> None:
+        self._cdp = None
         for closable in (self._context, self._browser):
             if closable is not None:
                 try:
@@ -96,6 +107,7 @@ class WebDriver:
         if self._browser is None:
             raise DriverCrashed("Browser belum dijalankan (panggil start())")
         if self._context is not None:
+            self._cdp = None
             try:
                 self._context.close()
             except PlaywrightError:
@@ -117,6 +129,74 @@ class WebDriver:
         self._page = page
         self._signals = []
         self._frames = []
+        if self._streaming and self._frame_sink is not None:
+            self._start_screencast()
+
+    # ---------- layar live ----------
+    def set_frame_sink(self, sink: Callable[[bytes, dict], None] | None) -> None:
+        self._frame_sink = sink
+        if sink is None:
+            self._stop_screencast()
+        elif self._streaming:
+            self._start_screencast()
+
+    def set_streaming(self, enabled: bool) -> None:
+        self._streaming = enabled
+        if enabled and self._frame_sink is not None:
+            self._start_screencast()
+        else:
+            self._stop_screencast()
+
+    def pump(self, ms: int = 50) -> None:
+        """Beri kesempatan Playwright memproses event (frame live) saat worker sedang menunggu."""
+        if self._page is None:
+            return
+        try:
+            self._page.wait_for_timeout(ms)
+        except PlaywrightError:
+            pass
+
+    def _start_screencast(self) -> None:
+        if self._page is None or self._cdp is not None:
+            return
+        try:
+            cdp = self._context.new_cdp_session(self._page)
+            cdp.on("Page.screencastFrame", lambda params: self._on_frame(cdp, params))
+            cdp.send("Page.startScreencast", {"format": "jpeg", "quality": SCREENCAST_QUALITY,
+                                              "maxWidth": SCREENCAST_MAX_WIDTH, "maxHeight": SCREENCAST_MAX_WIDTH,
+                                              "everyNthFrame": 1})
+            self._cdp = cdp
+        except PlaywrightError:
+            self._cdp = None
+
+    def _stop_screencast(self) -> None:
+        cdp, self._cdp = self._cdp, None
+        if cdp is None:
+            return
+        try:
+            cdp.send("Page.stopScreencast")
+            cdp.detach()
+        except PlaywrightError:
+            pass
+
+    def _on_frame(self, cdp: Any, params: dict) -> None:
+        try:
+            cdp.send("Page.screencastFrameAck", {"sessionId": params["sessionId"]})
+        except PlaywrightError:
+            return
+        if cdp is not self._cdp or self._frame_sink is None:
+            return
+        now = time.monotonic()
+        if now - self._last_frame_at < 1.0 / SCREENCAST_FPS:
+            return  # batasi ~6 fps
+        self._last_frame_at = now
+        meta = params.get("metadata") or {}
+        width, height = self.viewport
+        info = {"width": int(meta.get("deviceWidth") or width), "height": int(meta.get("deviceHeight") or height)}
+        try:
+            self._frame_sink(base64.b64decode(params["data"]), info)
+        except Exception:
+            pass  # penonton bermasalah tidak boleh menghentikan run
 
     def save_auth_state(self, path: Path) -> None:
         path = Path(path)
