@@ -49,6 +49,15 @@ class FakeDriver:
         self.saved: list[Path] = []
         self.credentials: dict[str, str] = {}
         self.started = False
+        self.manual: list[dict] = []
+        self.manual_result = ActionResult(ok=True)
+
+    def manual_input(self, event: dict) -> ActionResult:
+        self.manual.append(dict(event))
+        return self.manual_result
+
+    def viewport_size(self) -> dict:
+        return {"width": 1366, "height": 768}
 
     def start(self) -> None:
         self.started = True
