@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<title>Hasil run - QA Agent</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/@phosphor-icons/web@2.1.1"></script>
+<script src="assets/theme.js"></script>
+<style>body{font-family:Geist,system-ui,sans-serif;-webkit-font-smoothing:antialiased}</style>
+</head>
+<body class="bg-ink-950 text-fg min-h-[100dvh]">
+<div class="grid grid-cols-[232px_1fr] min-h-[100dvh]">
+
+  <aside class="border-r border-ink-700 bg-ink-900 flex flex-col">
+    <div class="h-16 px-5 flex items-center gap-2.5 border-b border-ink-700">
+      <div class="w-8 h-8 rounded-lg bg-accent grid place-items-center"><i class="ph-bold ph-scan text-white text-lg"></i></div>
+      <span class="font-semibold tracking-tight">QA Agent</span>
+    </div>
+    <nav class="p-3 flex flex-col gap-1 text-sm">
+      <a class="flex items-center gap-3 px-3 py-2 rounded-lg text-fg-muted"><i class="ph ph-gauge text-lg"></i>Dashboard</a>
+      <a class="flex items-center gap-3 px-3 py-2 rounded-lg text-fg-muted"><i class="ph ph-play-circle text-lg"></i>Run baru</a>
+      <a class="flex items-center gap-3 px-3 py-2 rounded-lg bg-ink-800 text-fg"><i class="ph ph-clock-counter-clockwise text-lg text-accent"></i>Riwayat run</a>
+      <a class="flex items-center gap-3 px-3 py-2 rounded-lg text-fg-muted"><i class="ph ph-squares-four text-lg"></i>Aplikasi</a>
+      <a class="flex items-center gap-3 px-3 py-2 rounded-lg text-fg-muted"><i class="ph ph-device-mobile text-lg"></i>Perangkat</a>
+      <a class="flex items-center gap-3 px-3 py-2 rounded-lg text-fg-muted"><i class="ph ph-gear-six text-lg"></i>Pengaturan</a>
+    </nav>
+    <div class="mt-auto m-3 p-3 rounded-lg border border-ink-700 text-xs">
+      <div class="flex items-center gap-2 text-fg"><span class="w-2 h-2 rounded-full bg-pass"></span>AI kantor terhubung</div>
+      <div class="mt-1 font-mono text-fg-dim">z-ai/glm-5.3-flash</div>
+    </div>
+  </aside>
+
+  <main class="px-10 py-8 flex flex-col gap-6 min-w-0">
+    <header class="flex items-start justify-between gap-6">
+      <div>
+        <div class="flex items-center gap-2 text-sm text-fg-muted"><span>Riwayat run</span><i class="ph ph-caret-right text-fg-dim"></i><span>Web HR</span></div>
+        <h1 class="mt-1 text-2xl font-semibold tracking-tight">Hasil uji modul Pengguna</h1>
+        <div class="mt-1.5 flex items-center gap-4 text-sm text-fg-muted">
+          <span class="font-mono">hr-dev.kantor.local</span><span>Dev / UAT</span><span>5 Nov 2026, 10.12</span><span>Durasi 12 menit</span>
+        </div>
+      </div>
+      <div class="flex items-center gap-2 shrink-0">
+        <button class="h-10 px-4 rounded-lg border border-ink-600 bg-ink-900 text-sm flex items-center gap-2"><i class="ph ph-arrow-clockwise"></i>Jalankan ulang</button>
+        <button class="h-10 px-4 rounded-lg border border-ink-600 bg-ink-900 text-sm flex items-center gap-2"><i class="ph ph-file-xls text-pass"></i>Excel</button>
+        <button class="h-10 px-4 rounded-lg bg-accent text-white text-sm font-semibold flex items-center gap-2"><i class="ph ph-file-text"></i>Laporan PDF</button>
+      </div>
+    </header>
+
+    <!-- Ringkasan -->
+    <section class="rounded-xl border border-ink-700 bg-ink-900 p-5 flex items-center gap-10">
+      <div><div class="text-sm text-fg-muted">Test case</div><div class="text-3xl font-semibold tracking-tight mt-1">15</div></div>
+      <div class="flex-1">
+        <div class="h-2.5 rounded-full overflow-hidden flex">
+          <div class="bg-pass" style="width:73.3%"></div><div class="bg-fail" style="width:13.3%"></div><div class="bg-review" style="width:6.7%"></div><div class="bg-ink-600" style="width:6.7%"></div>
+        </div>
+        <div class="mt-3 flex gap-6 text-sm">
+          <span class="flex items-center gap-2"><span class="w-2.5 h-2.5 rounded-sm bg-pass"></span>11 Pass</span>
+          <span class="flex items-center gap-2"><span class="w-2.5 h-2.5 rounded-sm bg-fail"></span>2 Fail</span>
+          <span class="flex items-center gap-2"><span class="w-2.5 h-2.5 rounded-sm bg-review"></span>1 Perlu Review</span>
+          <span class="flex items-center gap-2"><span class="w-2.5 h-2.5 rounded-sm bg-ink-600"></span>1 Blocked</span>
+        </div>
+      </div>
+      <div class="text-right"><div class="text-sm text-fg-muted">Sudah direview</div><div class="text-3xl font-semibold tracking-tight mt-1">3 <span class="text-fg-dim text-xl">/ 4</span></div></div>
+    </section>
+
+    <div class="grid grid-cols-[minmax(0,1fr)_480px] gap-6 min-w-0">
+      <!-- Tabel test case -->
+      <section class="rounded-xl border border-ink-700 bg-ink-900 overflow-hidden self-start">
+        <div class="px-4 py-3 flex items-center gap-2 border-b border-ink-700 text-sm">
+          <button class="h-8 px-3 rounded-md bg-ink-800 font-medium">Semua</button>
+          <button class="h-8 px-3 rounded-md text-fg-muted">Temuan 3</button>
+          <button class="h-8 px-3 rounded-md text-fg-muted">Belum direview 1</button>
+          <div class="ml-auto h-8 px-3 rounded-md border border-ink-700 flex items-center gap-2 text-fg-muted w-48"><i class="ph ph-magnifying-glass"></i>Cari test case</div>
+        </div>
+        <table class="w-full text-sm [&_td]:whitespace-nowrap">
+          <thead class="text-left text-xs text-fg-muted bg-ink-850 border-b border-ink-700">
+            <tr><th class="px-4 py-2.5 font-medium">ID</th><th class="px-4 py-2.5 font-medium">Skenario</th><th class="px-4 py-2.5 font-medium">Tipe</th><th class="px-4 py-2.5 font-medium">Status</th></tr>
+          </thead>
+          <tbody class="divide-y divide-ink-700">
+            <tr><td class="px-4 py-3 font-mono text-xs text-fg-dim">TC-PEN-001</td><td class="px-4 py-3">Tambah pengguna valid</td><td class="px-4 py-3 text-fg-muted">Positif</td><td class="px-4 py-3"><span class="px-2 py-0.5 rounded-md text-xs font-medium bg-pass/10 text-pass">Pass</span></td></tr>
+            <tr><td class="px-4 py-3 font-mono text-xs text-fg-dim">TC-PEN-002</td><td class="px-4 py-3">Validasi format email</td><td class="px-4 py-3 text-fg-muted">Validasi</td><td class="px-4 py-3"><span class="px-2 py-0.5 rounded-md text-xs font-medium bg-fail/10 text-fail">Fail</span> <span class="text-xs text-fg-dim">direview</span></td></tr>
+            <tr class="bg-accent-soft shadow-[inset_3px_0_0_#2560e8]"><td class="px-4 py-3 font-mono text-xs text-fg-dim">TC-PEN-003</td><td class="px-4 py-3 font-medium">Nama dengan apostrof</td><td class="px-4 py-3 text-fg-muted">Boundary</td><td class="px-4 py-3"><span class="px-2 py-0.5 rounded-md text-xs font-medium bg-fail/10 text-fail">Fail</span> <span class="text-xs text-fg-dim">direview</span></td></tr>
+            <tr><td class="px-4 py-3 font-mono text-xs text-fg-dim">TC-PEN-004</td><td class="px-4 py-3">Umur diisi huruf</td><td class="px-4 py-3 text-fg-muted">Negatif</td><td class="px-4 py-3"><span class="px-2 py-0.5 rounded-md text-xs font-medium bg-pass/10 text-pass">Pass</span></td></tr>
+            <tr><td class="px-4 py-3 font-mono text-xs text-fg-dim">TC-PEN-005</td><td class="px-4 py-3">Nama dikosongkan</td><td class="px-4 py-3 text-fg-muted">Validasi</td><td class="px-4 py-3"><span class="px-2 py-0.5 rounded-md text-xs font-medium bg-pass/10 text-pass">Pass</span></td></tr>
+            <tr><td class="px-4 py-3 font-mono text-xs text-fg-dim">TC-PEN-006</td><td class="px-4 py-3">Ekspor daftar pengguna</td><td class="px-4 py-3 text-fg-muted">Positif</td><td class="px-4 py-3"><span class="px-2 py-0.5 rounded-md text-xs font-medium bg-review/10 text-review">Perlu Review</span></td></tr>
+            <tr><td class="px-4 py-3 font-mono text-xs text-fg-dim">TC-PEN-007</td><td class="px-4 py-3">Edit data pengguna</td><td class="px-4 py-3 text-fg-muted">Positif</td><td class="px-4 py-3"><span class="px-2 py-0.5 rounded-md text-xs font-medium bg-pass/10 text-pass">Pass</span></td></tr>
+            <tr><td class="px-4 py-3 font-mono text-xs text-fg-dim">TC-PEN-008</td><td class="px-4 py-3">Hapus pengguna</td><td class="px-4 py-3 text-fg-muted">Positif</td><td class="px-4 py-3"><span class="px-2 py-0.5 rounded-md text-xs font-medium bg-ink-800 text-fg-muted">Blocked</span></td></tr>
+            <tr><td class="px-4 py-3 font-mono text-xs text-fg-dim">TC-PEN-009</td><td class="px-4 py-3">Umur batas maksimum</td><td class="px-4 py-3 text-fg-muted">Boundary</td><td class="px-4 py-3"><span class="px-2 py-0.5 rounded-md text-xs font-medium bg-pass/10 text-pass">Pass</span></td></tr>
+          </tbody>
+        </table>
+        <div class="px-4 py-3 text-xs text-fg-muted border-t border-ink-700">Menampilkan 9 dari 15</div>
+      </section>
+
+      <!-- Detail test case -->
+      <aside class="rounded-xl border border-ink-700 bg-ink-900 flex flex-col">
+        <div class="p-5 border-b border-ink-700">
+          <div class="flex items-center justify-between">
+            <span class="font-mono text-xs text-fg-dim">TC-PEN-003</span>
+            <span class="px-2 py-0.5 rounded-md text-xs font-medium bg-fail/10 text-fail">Fail, Major</span>
+          </div>
+          <h2 class="mt-1 font-semibold">Nama dengan apostrof</h2>
+          <dl class="mt-4 grid grid-cols-[90px_1fr] gap-y-2 text-sm">
+            <dt class="text-fg-muted">Expected</dt><dd>Pengguna "O'Brien" tersimpan dan muncul di daftar</dd>
+            <dt class="text-fg-muted">Actual</dt><dd>Server menampilkan Internal Server Error setelah klik Simpan</dd>
+            <dt class="text-fg-muted">Bukti teknis</dt><dd class="font-mono text-xs text-fail pt-0.5">HTTP 500 POST /users</dd>
+          </dl>
+        </div>
+        <div class="p-5 border-b border-ink-700">
+          <div class="text-sm font-medium mb-3">Evidence</div>
+          <div class="grid grid-cols-3 gap-2.5">
+            <figure><div class="rounded-md border border-ink-700 bg-white aspect-[4/3] overflow-hidden"><img src="assets/step-1.png" class="w-[300%] max-w-none" alt="Langkah 1"></div><figcaption class="mt-1 text-xs text-fg-muted">1. Isi Nama</figcaption></figure>
+            <figure><div class="rounded-md border border-ink-700 bg-white aspect-[4/3] overflow-hidden"><img src="assets/live-web.png" class="w-[300%] max-w-none" alt="Langkah 4"></div><figcaption class="mt-1 text-xs text-fg-muted">4. Klik Simpan</figcaption></figure>
+            <figure><div class="rounded-md border border-fail/50 bg-white aspect-[4/3] overflow-hidden"><img src="assets/tc3-hasil-500.png" class="w-[300%] max-w-none" alt="Hasil"></div><figcaption class="mt-1 text-xs text-fail">5. Hasil: error 500</figcaption></figure>
+          </div>
+        </div>
+        <div class="p-5 flex flex-col gap-3">
+          <div class="grid grid-cols-2 gap-3">
+            <div class="flex flex-col gap-1.5">
+              <label class="text-xs font-medium text-fg-muted">Status final</label>
+              <div class="h-10 px-3 rounded-lg border border-ink-600 flex items-center justify-between text-sm"><span class="text-fail font-medium">Fail</span><i class="ph ph-caret-down text-fg-muted"></i></div>
+            </div>
+            <div class="flex flex-col gap-1.5">
+              <label class="text-xs font-medium text-fg-muted">Severity</label>
+              <div class="h-10 px-3 rounded-lg border border-ink-600 flex items-center justify-between text-sm"><span>Major</span><i class="ph ph-caret-down text-fg-muted"></i></div>
+            </div>
+          </div>
+          <div class="flex flex-col gap-1.5">
+            <label class="text-xs font-medium text-fg-muted">Catatan reviewer</label>
+            <div class="h-16 rounded-lg border border-ink-600 p-3 text-sm">Bug valid. Nama dengan tanda petik umum di data karyawan.</div>
+          </div>
+          <button class="h-9 rounded-lg border border-ink-600 text-sm flex items-center justify-center gap-2"><i class="ph ph-copy"></i>Salin sebagai laporan bug (Jira)</button>
+        </div>
+      </aside>
+    </div>
+  </main>
+</div>
+</body>
+</html>

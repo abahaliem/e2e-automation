@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<title>Run berjalan - QA Agent</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/@phosphor-icons/web@2.1.1"></script>
+<script src="assets/theme.js"></script>
+<style>body{font-family:Geist,system-ui,sans-serif;-webkit-font-smoothing:antialiased}</style>
+</head>
+<body class="bg-ink-950 text-fg h-[100dvh] overflow-hidden">
+<div class="grid grid-rows-[64px_1fr] h-full">
+
+  <!-- Top bar -->
+  <header class="border-b border-ink-700 bg-ink-900 px-5 flex items-center gap-5">
+    <div class="w-8 h-8 rounded-lg bg-accent grid place-items-center"><i class="ph-bold ph-scan text-white text-lg"></i></div>
+    <div class="flex items-center gap-2 text-sm">
+      <span class="text-fg-muted">Web HR</span><i class="ph ph-caret-right text-fg-dim"></i><span class="font-medium">Uji modul Pengguna</span>
+    </div>
+    <span class="ml-2 inline-flex items-center gap-2 px-2.5 py-1 rounded-md bg-accent-soft border border-accent-line text-accent text-xs font-medium">
+      <span class="w-1.5 h-1.5 rounded-full bg-accent"></span>Berjalan
+    </span>
+    <div class="flex items-center gap-4 text-sm text-fg-muted">
+      <span class="font-mono">08:42</span>
+      <span>Test case 3 dari 15</span>
+    </div>
+    <div class="ml-auto flex items-center gap-2">
+      <button class="h-9 px-4 rounded-lg border border-ink-600 text-sm flex items-center gap-2"><i class="ph ph-pause"></i>Jeda</button>
+      <button class="h-9 px-4 rounded-lg bg-accent text-white text-sm font-semibold flex items-center gap-2"><i class="ph ph-hand-pointing"></i>Ambil alih</button>
+      <button class="h-9 px-4 rounded-lg border border-fail/40 text-fail text-sm flex items-center gap-2"><i class="ph ph-stop"></i>Hentikan</button>
+    </div>
+  </header>
+
+  <div class="grid grid-cols-[260px_minmax(0,1fr)_380px] min-h-0">
+
+    <!-- Test case queue -->
+    <aside class="border-r border-ink-700 bg-ink-900 overflow-hidden flex flex-col">
+      <div class="px-4 py-3 text-xs text-fg-muted flex items-center justify-between border-b border-ink-700">
+        <span>Test case</span><span class="font-mono">1 Pass, 1 Review</span>
+      </div>
+      <ol class="p-2 flex flex-col gap-1 text-sm">
+        <li class="px-3 py-2.5 rounded-lg flex items-start gap-3">
+          <i class="ph-fill ph-check-circle text-pass text-lg mt-px"></i>
+          <div><div class="font-mono text-xs text-fg-dim">TC-PEN-001</div><div>Tambah pengguna valid</div></div>
+        </li>
+        <li class="px-3 py-2.5 rounded-lg flex items-start gap-3">
+          <i class="ph-fill ph-warning-circle text-review text-lg mt-px"></i>
+          <div><div class="font-mono text-xs text-fg-dim">TC-PEN-002</div><div>Validasi format email</div></div>
+        </li>
+        <li class="px-3 py-2.5 rounded-lg flex items-start gap-3 bg-ink-800 border border-ink-600">
+          <i class="ph ph-circle-notch text-accent text-lg mt-px"></i>
+          <div><div class="font-mono text-xs text-fg-dim">TC-PEN-003</div><div class="font-medium">Nama dengan apostrof</div></div>
+        </li>
+        <li class="px-3 py-2.5 rounded-lg flex items-start gap-3 text-fg-muted">
+          <i class="ph ph-circle text-fg-dim text-lg mt-px"></i>
+          <div><div class="font-mono text-xs text-fg-dim">TC-PEN-004</div><div>Umur diisi huruf</div></div>
+        </li>
+        <li class="px-3 py-2.5 rounded-lg flex items-start gap-3 text-fg-muted">
+          <i class="ph ph-circle text-fg-dim text-lg mt-px"></i>
+          <div><div class="font-mono text-xs text-fg-dim">TC-PEN-005</div><div>Nama dikosongkan</div></div>
+        </li>
+        <li class="px-3 py-2.5 rounded-lg flex items-start gap-3 text-fg-muted">
+          <i class="ph ph-circle text-fg-dim text-lg mt-px"></i>
+          <div><div class="font-mono text-xs text-fg-dim">TC-PEN-006</div><div>Edit data pengguna</div></div>
+        </li>
+        <li class="px-3 py-2.5 rounded-lg flex items-start gap-3 text-fg-muted">
+          <i class="ph ph-circle text-fg-dim text-lg mt-px"></i>
+          <div><div class="font-mono text-xs text-fg-dim">TC-PEN-007</div><div>Batal tambah pengguna</div></div>
+        </li>
+      </ol>
+    </aside>
+
+    <!-- Live view -->
+    <section class="p-5 flex flex-col gap-3 min-h-0">
+      <div class="rounded-xl border border-ink-700 bg-ink-900 overflow-hidden flex flex-col min-h-0">
+        <div class="h-10 px-3 flex items-center gap-3 border-b border-ink-700 bg-ink-850">
+          <i class="ph ph-globe-simple text-fg-dim"></i>
+          <div class="flex-1 h-6 rounded-md bg-ink-950 border border-ink-700 px-3 flex items-center font-mono text-xs text-fg-muted">hr-dev.kantor.local/users/new</div>
+          <span class="text-xs px-2 py-0.5 rounded-md bg-fail/15 text-fail font-medium">LIVE</span>
+        </div>
+        <div class="bg-white">
+          <img src="assets/live-web.png" alt="Tampilan langsung browser yang sedang diuji agent" class="w-full block">
+        </div>
+      </div>
+      <div class="flex items-center justify-between text-sm">
+        <div class="flex items-center gap-2"><span class="font-mono text-fg-dim">Langkah 4</span><span>Klik tombol "Simpan"</span></div>
+        <div class="text-xs text-fg-muted flex items-center gap-1.5"><i class="ph ph-cursor-click"></i>Ambil alih untuk mengklik langsung di layar ini</div>
+      </div>
+
+      <!-- Filmstrip langkah sebelumnya -->
+      <div class="mt-2 flex flex-col gap-2">
+        <div class="text-xs text-fg-muted">Langkah sebelumnya di test case ini</div>
+        <div class="grid grid-cols-4 gap-3">
+          <figure class="rounded-lg border border-ink-700 overflow-hidden bg-ink-900">
+            <div class="bg-white aspect-[16/9] overflow-hidden"><img src="assets/step-1.png" alt="Langkah 1" class="w-[220%] max-w-none"></div>
+            <figcaption class="px-2.5 py-2 text-xs"><span class="font-mono text-fg-dim">1</span> <span class="text-fg-muted">Isi "Nama"</span></figcaption>
+          </figure>
+          <figure class="rounded-lg border border-ink-700 overflow-hidden bg-ink-900">
+            <div class="bg-white aspect-[16/9] overflow-hidden"><img src="assets/step-2.png" alt="Langkah 2" class="w-[220%] max-w-none"></div>
+            <figcaption class="px-2.5 py-2 text-xs"><span class="font-mono text-fg-dim">2</span> <span class="text-fg-muted">Isi "Email"</span></figcaption>
+          </figure>
+          <figure class="rounded-lg border border-ink-700 overflow-hidden bg-ink-900">
+            <div class="bg-white aspect-[16/9] overflow-hidden"><img src="assets/step-3.png" alt="Langkah 3" class="w-[220%] max-w-none"></div>
+            <figcaption class="px-2.5 py-2 text-xs"><span class="font-mono text-fg-dim">3</span> <span class="text-fg-muted">Isi "Umur"</span></figcaption>
+          </figure>
+          <figure class="rounded-lg border border-accent-line overflow-hidden bg-ink-900">
+            <div class="bg-white aspect-[16/9] overflow-hidden"><img src="assets/live-web.png" alt="Langkah 4" class="w-[220%] max-w-none"></div>
+            <figcaption class="px-2.5 py-2 text-xs"><span class="font-mono text-accent">4</span> <span>Klik "Simpan"</span></figcaption>
+          </figure>
+        </div>
+      </div>
+    </section>
+
+    <!-- AI steps + intervention -->
+    <aside class="border-l border-ink-700 bg-ink-900 flex flex-col min-h-0">
+      <div class="px-5 pt-4 pb-3 border-b border-ink-700">
+        <div class="font-mono text-xs text-fg-dim">TC-PEN-003</div>
+        <div class="font-medium mt-0.5">Nama dengan apostrof</div>
+        <div class="text-sm text-fg-muted mt-1">Expected: pengguna "O'Brien" tersimpan dan muncul di daftar.</div>
+      </div>
+
+      <ol class="px-5 py-4 flex flex-col gap-4 text-sm overflow-hidden">
+        <li class="flex gap-3"><i class="ph-fill ph-check-circle text-pass mt-0.5"></i><span class="text-fg-muted">Isi field "Nama" dengan "O'Brien"</span></li>
+        <li class="flex gap-3"><i class="ph-fill ph-check-circle text-pass mt-0.5"></i><span class="text-fg-muted">Isi field "Email" dengan "obrien@demo.local"</span></li>
+        <li class="flex gap-3"><i class="ph-fill ph-check-circle text-pass mt-0.5"></i><span class="text-fg-muted">Isi field "Umur" dengan "40"</span></li>
+        <li class="flex gap-3">
+          <i class="ph ph-circle-notch text-accent mt-0.5"></i>
+          <div>
+            <div class="font-medium">Klik tombol "Simpan"</div>
+            <div class="mt-2 p-3 rounded-lg bg-ink-850 border border-ink-700 text-fg-muted text-[13px] leading-relaxed">
+              <div class="flex items-center gap-1.5 text-xs text-fg-dim mb-1"><i class="ph ph-brain"></i>Pertimbangan AI</div>
+              Form sudah terisi. Simpan untuk melihat apakah nama berapostrof diterima server.
+            </div>
+          </div>
+        </li>
+      </ol>
+
+      <!-- Intervention -->
+      <div class="mt-auto border-t border-ink-700 p-5 flex flex-col gap-3 bg-ink-850">
+        <div class="text-sm font-medium flex items-center gap-2"><i class="ph ph-chat-centered-text text-accent"></i>Arahkan agent</div>
+        <div class="h-20 rounded-lg bg-ink-950 border border-ink-600 p-3 text-sm text-fg-dim">Contoh: setelah simpan, cek juga apakah nama muncul di halaman daftar pengguna</div>
+        <div class="flex items-center gap-2">
+          <button class="h-9 px-4 rounded-lg bg-accent text-white text-sm font-semibold flex items-center gap-2"><i class="ph ph-paper-plane-tilt"></i>Kirim</button>
+          <button class="h-9 px-3 rounded-lg border border-ink-600 text-sm flex items-center gap-1.5"><i class="ph ph-arrow-counter-clockwise"></i>Ulangi langkah</button>
+          <button class="h-9 px-3 rounded-lg border border-ink-600 text-sm flex items-center gap-1.5"><i class="ph ph-skip-forward"></i>Lewati</button>
+        </div>
+      </div>
+    </aside>
+  </div>
+</div>
+</body>
+</html>
