@@ -65,22 +65,36 @@ def get_run(run_id: int, request: Request) -> dict:
     return run_out(request, deps.get_run_or_404(request, run_id))
 
 
-@router.get("/runs/{run_id}/state")
-def run_state(run_id: int, request: Request) -> dict:
-    row = deps.get_run_or_404(request, run_id)
-    snap = deps.hub(request).snapshot(run_id)
+def state_snapshot(state, run_id: int) -> dict | None:
+    """Snapshot kondisi run untuk REST dan WebSocket. `state` = app.state."""
+    row = state.store.get_run(run_id)
+    if row is None:
+        return None
+    snap = state.hub.snapshot(run_id)
     if snap["seq"] == 0:  # run lama / server baru start: bangun dari indeks
         snap.update(status=row.status, counts=row.counts, note=row.note)
         snap["cases"] = [{"tc_id": c.tc_id, "title": c.title, "status": c.effective_status}
-                         for c in deps.store(request).list_cases(run_id)]
-    manager = deps.manager(request)
+                         for c in state.store.list_cases(run_id)]
+    manager = state.manager
+    snap["confirm_each_step"] = bool(row.options.get("confirm_each_step"))
     if manager.is_active(run_id):
-        control = manager.control(run_id)
-        snap["control_state"] = control.state
-        snap["awaiting_confirm"] = control.awaiting_confirm
-    else:
-        snap["control_state"] = None
-        snap["awaiting_confirm"] = False
+        try:
+            control = manager.control(run_id)
+            snap["control_state"] = control.state
+            snap["awaiting_confirm"] = control.awaiting_confirm
+            return snap
+        except Exception:
+            pass
+    snap["control_state"] = None
+    snap["awaiting_confirm"] = False
+    return snap
+
+
+@router.get("/runs/{run_id}/state")
+def run_state(run_id: int, request: Request) -> dict:
+    snap = state_snapshot(request.app.state, run_id)
+    if snap is None:
+        raise deps.not_found("Run")
     return snap
 
 
