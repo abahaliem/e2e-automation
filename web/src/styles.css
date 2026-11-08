@@ -1,0 +1,56 @@
+@import "tailwindcss";
+
+/* Token tema terang QA Agent (sama dengan docs/design/mockups/assets/theme.js).
+   ink-950 = latar halaman, ink-900 = permukaan kartu/panel, ink-700 = garis, fg = teks. */
+@theme {
+  --font-sans: "Geist", system-ui, sans-serif;
+  --font-mono: "Geist Mono", ui-monospace, monospace;
+
+  --color-ink-950: #f3f4f7;
+  --color-ink-900: #fdfdfe;
+  --color-ink-850: #f7f8fa;
+  --color-ink-800: #edf0f5;
+  --color-ink-700: #e1e4ea;
+  --color-ink-600: #cdd2db;
+  --color-ink-500: #9aa0ab;
+
+  --color-fg: #15171c;
+  --color-fg-muted: #585d69;
+  --color-fg-dim: #858a96;
+
+  --color-accent: #2560e8;
+  --color-accent-hover: #1d50c7;
+  --color-accent-soft: rgba(37, 96, 232, 0.07);
+  --color-accent-line: rgba(37, 96, 232, 0.45);
+
+  --color-pass: #1b8f5b;
+  --color-fail: #cf3b36;
+  --color-review: #a8760f;
+}
+
+@layer base {
+  html,
+  body,
+  #root {
+    min-height: 100dvh;
+  }
+  body {
+    @apply bg-ink-950 text-fg font-sans antialiased;
+  }
+  :focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+  }
+  button:disabled {
+    cursor: not-allowed;
+  }
+}
+
+@keyframes skeleton-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.55; }
+}
+.skeleton {
+  @apply rounded-md bg-ink-800;
+  animation: skeleton-pulse 1.4s ease-in-out infinite;
+}
