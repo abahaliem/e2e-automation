@@ -310,6 +310,53 @@ def run_command(
     _execute(rt, meta, app_map, cases)
 
 
+def find_free_port(start: int, host: str = "127.0.0.1", attempts: int = 50) -> int:
+    """Port pertama mulai `start` yang bisa di-bind."""
+    import socket
+
+    for port in range(start, start + attempts):
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            try:
+                s.bind((host, port))
+                return port
+            except OSError:
+                continue
+    raise OSError(f"Tidak ada port kosong antara {start} dan {start + attempts - 1}")
+
+
+def _open_browser_later(url: str) -> None:
+    import threading
+    import webbrowser
+
+    threading.Timer(1.5, lambda: webbrowser.open(url)).start()
+
+
+@app.command()
+def serve(
+    data_dir: Optional[Path] = typer.Option(None, "--data-dir", help="Folder data (default: %USERPROFILE%\\QA Agent)"),
+    port: int = typer.Option(8787, "--port", help="Port awal; port kosong berikutnya dipakai bila terpakai"),
+    no_browser: bool = typer.Option(False, "--no-browser", help="Jangan buka browser otomatis"),
+    max_parallel: int = typer.Option(2, "--max-parallel", min=1, max=8, help="Maksimal run berjalan bersamaan"),
+) -> None:
+    """Jalankan dashboard web di http://127.0.0.1 (hanya bisa diakses dari laptop ini)."""
+    import uvicorn
+
+    from qa_agent.server.app import create_app
+    from qa_agent.server.settings import ServerSettings, default_data_dir
+
+    host = "127.0.0.1"
+    settings = ServerSettings(data_dir=(data_dir or default_data_dir()).resolve(), host=host,
+                              port=find_free_port(port, host), max_parallel=max_parallel)
+    settings.ensure_dirs()
+    url = f"http://{host}:{settings.port}"
+    typer.echo(f"Dashboard QA Agent: {url}")
+    typer.echo(f"Folder data       : {settings.data_dir}")
+    typer.echo("Tekan Ctrl+C untuk berhenti.")
+    if not no_browser:
+        _open_browser_later(url)
+    uvicorn.run(create_app(settings), host=host, port=settings.port, log_level="warning")
+
+
 @app.command()
 def report(run_dir: Path = typer.Option(..., "--run", help="Folder run")) -> None:
     """Buat ulang laporan memakai Status Final dan Catatan Reviewer dari report.xlsx."""
