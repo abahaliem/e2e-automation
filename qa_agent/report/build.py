@@ -15,6 +15,8 @@ def apply_review(cases: list[QaTestCase], review: dict) -> None:
         if entry:
             tc.status_final = entry.get("status_final")
             tc.reviewer_note = entry.get("reviewer_note", "")
+            if entry.get("severity"):
+                tc.severity = entry["severity"]
 
 
 def import_review(store: RunStore) -> int:
@@ -22,16 +24,33 @@ def import_review(store: RunStore) -> int:
         return 0
     review = read_review(store.report_xlsx)
     if review:  # laporan explore tidak punya sheet Test Cases; jangan timpa review.json dengan kosong
+        existing = store.read_review()
+        for tc_id, entry in review.items():  # severity hanya diatur dari dashboard; pertahankan
+            if existing.get(tc_id, {}).get("severity"):
+                entry["severity"] = existing[tc_id]["severity"]
         store.write_review(review)
     return sum(1 for r in review.values() if r["status_final"] or r["reviewer_note"])
 
 
-def build_reports(store: RunStore) -> tuple[Path, Path]:
+def excel_is_newer(store: RunStore) -> bool:
+    """Editan di report.xlsx hanya diimpor bila file Excel lebih baru dari review.json.
+
+    Review dari dashboard yang tersimpan saat Excel terkunci tidak boleh ditimpa nilai lama dari Excel.
+    """
+    if not store.report_xlsx.exists():
+        return False
+    if not store.review_path.exists():
+        return True
+    return store.report_xlsx.stat().st_mtime >= store.review_path.stat().st_mtime
+
+
+def build_reports(store: RunStore, *, import_excel: bool = True) -> tuple[Path, Path]:
     # Editan reviewer di report.xlsx yang belum diimpor tidak boleh hilang saat laporan ditulis ulang.
-    try:
-        import_review(store)
-    except (ValueError, KeyError, OSError, zipfile.BadZipFile):
-        pass  # isi review tidak valid/tidak terbaca: pakai review.json terakhir; `qa-agent report` menampilkan error-nya
+    if import_excel and excel_is_newer(store):
+        try:
+            import_review(store)
+        except (ValueError, KeyError, OSError, zipfile.BadZipFile):
+            pass  # isi review tidak valid/tidak terbaca: pakai review.json terakhir; `qa-agent report` menampilkan error-nya
     meta = store.read_meta()
     cases = store.read_testcases()
     apply_review(cases, store.read_review())
