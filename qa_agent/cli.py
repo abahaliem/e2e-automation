@@ -339,6 +339,7 @@ def serve(
     max_parallel: int = typer.Option(2, "--max-parallel", min=1, max=8, help="Maksimal run berjalan bersamaan"),
 ) -> None:
     """Jalankan dashboard web di http://127.0.0.1 (hanya bisa diakses dari laptop ini)."""
+    typer.echo("Menyiapkan dashboard QA Agent...")
     import uvicorn
 
     from qa_agent.server.app import create_app
