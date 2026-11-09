@@ -29,6 +29,11 @@ KEY_BACK, KEY_DEL, KEY_MOVE_END = 4, 67, 123
 _FATAL = re.compile(r"device .*not found|no devices|device offline|device unauthorized|closed", re.IGNORECASE)
 _SYSTEM_DIALOG = re.compile(r"isn.t responding|tidak merespons|has stopped|telah berhenti|keeps stopping|terus berhenti",
                             re.IGNORECASE)
+_ERROR_TEXT = re.compile(
+    r"error|gagal|failed|failure|exception|kesalahan|tidak dapat|tidak bisa|timeout|time out|invalid|unauthori[sz]ed"
+    r"|forbidden|not found|something went wrong|oops|server error|koneksi (terputus|gagal)|no connection|denied"
+    r"|ditolak|tidak valid|salah",
+    re.IGNORECASE)
 AI_IMAGE_WIDTH = 720
 FRAME_WIDTH = 720
 
@@ -60,6 +65,7 @@ class AndroidDriver:
         self.login_mode = False  # kompatibel dengan WebDriver (tidak ada filter jaringan di Android)
         self.keeps_login = True  # membuka ulang aplikasi tidak menghapus sesi login (beda dengan konteks browser baru)
         self._recording: list[dict] | None = None
+        self._transient: list[str] = []  # teks error dari popup/snackbar yang tampil sesaat setelah tap
         self.frame_workers = 2  # screencap HP lambat (~0,3-0,8 dtk): dua pengambil bergantian supaya live lebih mulus
         self.blocked_requests: list[str] = []
         self._size = (1080, 1920)
@@ -221,8 +227,26 @@ class AndroidDriver:
             fingerprint=fingerprint(location, elements),
         )
 
+    def _watch_transient(self) -> None:
+        """Baca layar sekali tepat setelah tap: popup/snackbar error yang hilang sendiri tetap tertangkap."""
+        self._sleep(0.3)
+        try:
+            elements = parse_ui(self.adb.dump_ui(), self.max_elements, self._size)
+        except Exception:
+            return
+        for el in elements:
+            text = (el.name or "").strip()
+            if text and _ERROR_TEXT.search(text) and text not in self._transient:
+                self._transient.append(text)
+
     def _signals(self, elements: list[Element]) -> list[Signal]:
         signals: list[Signal] = []
+        if self._transient:
+            visible = {(e.name or "").strip() for e in elements}
+            for text in self._transient:
+                if text not in visible:  # yang masih tampil sudah terlihat agent di daftar elemen
+                    signals.append(Signal(kind="ui_error", message=f"Pesan muncul sesaat lalu hilang: {text}"[:300]))
+            self._transient = []
         if self._alive and not self._crash_reported and not self.adb.pidof(self.package):
             self._crash_reported = True
             log = self.adb.crash_log(self.package)
@@ -286,6 +310,11 @@ class AndroidDriver:
         elements = self._dump()
         reached = self._locate(elements)
         if reached != location and not self._is_login(elements):
+            if not target:
+                raise RuntimeError(
+                    "Layar awal test case ini tidak tampil saat aplikasi dibuka. Layar tersebut kemungkinan hanya muncul "
+                    "pada kondisi tertentu (mis. popup/form yang muncul otomatis), jadi test case tidak bisa dijalankan sekarang"
+                    f" ({location}, yang tampil {reached})")
             raise RuntimeError(f"Layar {location} tidak bisa dicapai (tiba di {reached})")
 
     @staticmethod
@@ -338,6 +367,7 @@ class AndroidDriver:
                 self._pending = (origin, step)
                 if self._recording is not None:
                     self._recording.append(dict(step))
+                self._watch_transient()
                 if kind == "select" and action.value:
                     self._sleep(self.settle_seconds)
                     target = next((e for e in self._dump() if e.name.lower() == action.value.lower()), None)

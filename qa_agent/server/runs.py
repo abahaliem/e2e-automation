@@ -437,7 +437,7 @@ class RunManager:
         self.hub.publish(row.id, {"type": "cases.planned",
                                   "cases": [{"tc_id": c.id, "title": c.title, "status": c.status_ai} for c in cases]})
         needs_auth = not all(s.public for s in app_map.screens_for(module))
-        make_runner(rt).execute(cases, needs_auth=needs_auth)
+        make_runner(rt).execute(cases, needs_auth=needs_auth, public_starts={s.url for s in app_map.screens if s.public})
 
     def _finish(self, run_id: int, rs: RunStore, meta: RunMeta | None, status: str, note: str) -> None:
         if meta is not None:
