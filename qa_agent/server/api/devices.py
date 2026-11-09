@@ -5,7 +5,7 @@ import re
 import time
 
 from fastapi import APIRouter, HTTPException, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 
 from qa_agent.drivers.adb import AdbError, AdbNotFound
 from qa_agent.server.api import deps
@@ -48,12 +48,33 @@ def list_devices(request: Request):
 
 @router.get("/devices/{serial}/packages")
 def device_packages(serial: str, request: Request):
+    adb = _adb(request, serial)
     try:
-        return {"packages": _adb(request, serial).packages(third_party=True)}
+        try:
+            versions = adb.package_versions()
+        except AdbError as e:
+            if "unauthorized" in str(e) or "not found" in str(e) or "offline" in str(e):
+                raise
+            versions = {p: None for p in adb.packages(third_party=True)}
     except AdbNotFound:
         return _missing()
     except AdbError as e:
         raise HTTPException(status_code=409, detail=str(e))
+    return {"packages": list(versions), "apps": [{"package": p, "version": v} for p, v in versions.items()]}
+
+
+@router.get("/devices/{serial}/screen")
+def device_screen(serial: str, request: Request):
+    """Pratinjau layar HP (JPEG kecil) untuk panel Layar HP di Run baru."""
+    from qa_agent.imaging import to_jpeg
+
+    try:
+        jpeg = to_jpeg(_adb(request, serial).screencap(), max_width=480, quality=60)
+    except AdbNotFound:
+        return _missing()
+    except AdbError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    return Response(content=jpeg, media_type="image/jpeg", headers={"cache-control": "no-store"})
 
 
 @router.post("/devices/{serial}/install")
