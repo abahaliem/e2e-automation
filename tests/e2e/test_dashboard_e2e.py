@@ -50,6 +50,9 @@ def test_dashboard_end_to_end(dashboard, demo, page, tmp_path):
     page.get_by_role("button", name="Kirim").click()
     expect(page.get_by_label("Arahkan agent")).to_have_value("")
     page.get_by_role("button", name="Lanjutkan").click()
+    # Menu habis: agent bertanya lanjut memetakan atau selesai (pilihan default di Run baru)
+    expect(page.get_by_text("Lanjutkan memetakan?", exact=False)).to_be_visible(timeout=120_000)
+    page.get_by_role("button", name="Selesai", exact=True).click()
     expect(page.get_by_text("Run selesai.")).to_be_visible(timeout=120_000)
 
     # 4. Run satu modul Pengguna

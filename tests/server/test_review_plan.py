@@ -81,3 +81,12 @@ def test_put_plan_validation(ctx):
     assert client.get(f"/api/runs/{run_id}/plan").json()["editable"] is False
     r = client.put(f"/api/runs/{run_id}/plan", json={"cases": [cases[0]]})
     assert r.status_code == 409
+
+
+def test_run_map_lists_screens_per_module(ctx):
+    client, _, run_id, _ = ctx
+    body = client.get(f"/api/runs/{run_id}/map").json()
+    assert body["screens"] == 3
+    assert [m["name"] for m in body["modules"]] == ["Autentikasi", "Order"]
+    assert [s["page_name"] for s in body["modules"][0]["screens"]] == ["Sign In", "Form Reason Lembur"]
+    assert body["modules"][0]["screens"][0]["public"] is True

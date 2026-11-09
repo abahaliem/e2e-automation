@@ -134,3 +134,13 @@ describe("Run baru", () => {
     expect(mocked.createRun).not.toHaveBeenCalled();
   });
 });
+
+
+describe("Hasil penjelajahan", () => {
+  it("Run baru ?module= memilih modul dari hasil penjelajahan", async () => {
+    mocked.listApps.mockResolvedValue([app]);
+    mocked.appModules.mockResolvedValue({ modules: ["Dashboard", "Pengguna"], explored: true });
+    renderWithProviders(<RunNewPage />, { path: "/runs/new?app=3&module=Pengguna", route: "/runs/new" });
+    await waitFor(() => expect(screen.getByLabelText("Modul")).toHaveValue("Pengguna"));
+  });
+});

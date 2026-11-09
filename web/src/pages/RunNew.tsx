@@ -30,6 +30,7 @@ export function RunNewPage() {
   const [module, setModule] = useState("");
   const [confirmEach, setConfirmEach] = useState(false);
   const [reviewFirst, setReviewFirst] = useState(false);
+  const [askBeforeFinish, setAskBeforeFinish] = useState(true);
   // Regresi: ?reuse=<run> memakai test case run itu (tanpa AI menyusun ulang)
   const reuseId = Number(params.get("reuse")) || null;
   const [reuse, setReuse] = useState<number | null>(reuseId);
@@ -91,6 +92,14 @@ export function RunNewPage() {
   useEffect(() => {
     if (!explored && mode === "deep") setMode("explore");
   }, [explored, mode]);
+  // ?module= dari halaman hasil penjelajahan (tombol Uji modul ini)
+  const moduleParam = params.get("module");
+  useEffect(() => {
+    if (moduleParam && explored && modules.data?.modules.includes(moduleParam) && !reuse) {
+      setMode("deep");
+      setModule(moduleParam);
+    }
+  }, [moduleParam, explored, modules.data, reuse]);
   useEffect(() => {
     // modul mengikuti run sumber test case
     if (reuse && reuseRun.data?.module && explored && matched?.id === reuseRun.data.app_id) {
@@ -140,6 +149,7 @@ export function RunNewPage() {
         confirm_each_step: confirmEach,
         device_serial: platform === "android" ? serial : null,
         ...(platform === "android" && apk ? { apk_file: apk.file, apk_grant: apk.grant, apk_uninstall: apk.uninstall } : {}),
+        ...(mode === "explore" && askBeforeFinish ? { ask_before_finish: true } : {}),
         ...(mode === "deep" && reviewFirst ? { review_first: true } : {}),
         ...(mode === "deep" && reuse ? { reuse_cases_from: reuse } : {}),
       };
@@ -454,6 +464,17 @@ export function RunNewPage() {
               Memakai test case yang sama dengan run #{reuseRun.data.id} (modul {reuseRun.data.module}) untuk regresi. AI tidak
               menyusun ulang test case.
             </Alert>
+          )}
+          {mode === "explore" && (
+            <div className="rounded-lg border border-ink-700 bg-ink-900 p-4">
+              <Switch
+                id="run-ask"
+                checked={askBeforeFinish}
+                onChange={setAskBeforeFinish}
+                label="Tanya dulu sebelum selesai memetakan"
+                description="Saat menu yang ditemukan habis, agent bertanya apakah lanjut memetakan. Kamu bisa membuka menu yang terlewat lewat Ambil alih."
+              />
+            </div>
           )}
           {mode === "deep" && (
             <div className="rounded-lg border border-ink-700 bg-ink-900 p-4">

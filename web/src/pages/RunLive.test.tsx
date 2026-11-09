@@ -63,6 +63,18 @@ describe("Run berjalan", () => {
     expect(mocked.control).toHaveBeenCalledWith(9, { command: "pause" });
   });
 
+  it("Seluruh aplikasi: agent bertanya lanjutkan memetakan atau selesai", async () => {
+    mocked.getRun.mockResolvedValue({ ...run, mode: "explore", module: null } as never);
+    setStream(snapshot({ control_state: "paused", current_tc: null, cases: [], screens: 3, asking: { screens: 3, modules: 2 } }));
+    renderWithProviders(<RunLivePage />, { path: "/runs/9", route: "/runs/:runId" });
+    const user = userEvent.setup();
+    expect(await screen.findByText("Agent sudah memetakan 3 layar dalam 2 modul.")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Lanjutkan memetakan" }));
+    expect(mocked.control).toHaveBeenCalledWith(9, { command: "resume" });
+    await user.click(screen.getByRole("button", { name: "Selesai" }));
+    expect(mocked.control).toHaveBeenCalledWith(9, { command: "finish_explore" });
+  });
+
   it("banner AI tidak merespons menampilkan Coba lagi", async () => {
     setStream(snapshot({ status: "paused", control_state: null, note: "Endpoint AI bermasalah: timeout" }));
     mocked.getRun.mockResolvedValue({ ...run, status: "paused", active: false, note: "Endpoint AI bermasalah: timeout" } as never);

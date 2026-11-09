@@ -155,3 +155,74 @@ def test_explorer_dismisses_blocking_popup_with_back_and_maps_screen_behind(tmp_
     d2.register_paths({s.url: s.nav_path for s in app_map.screens})
     d2.goto(users.url)
     assert adb.current == "USERS"
+
+def test_explorer_probes_buttons_when_ai_gives_no_nav_candidates(tmp_path):
+    """AI tidak menyebut kandidat navigasi (jawaban kosong/gagal dibaca): tombol aman tetap dicoba diklik."""
+    adb = FakeAdb({"HOME": HOME_XML, "USERS": USERS_XML, "REPORTS": REPORTS_XML}, "HOME",
+                  {("HOME", (0, 300, 1080, 420)): "USERS", ("HOME", (0, 440, 1080, 560)): "REPORTS"})
+    driver = AndroidDriver(adb, "com.demo.app", sleep=lambda s: None)
+    driver.start()
+
+    def lazy_brain(system, messages):
+        data = json.loads(explore_brain(system, messages))
+        data["nav_candidates"] = []
+        return json.dumps(data)
+
+    explorer = Explorer(driver=driver, llm=FakeLLM(lazy_brain), guard=Guard("dev", ["com.demo.app"]),
+                        store=RunStore(tmp_path / "run"), auth=None, start_url="android://com.demo.app", max_minutes=1)
+    app_map = explorer.run()
+    assert set(app_map.modules()) == {"Beranda", "Pengguna", "Laporan"}
+    assert not any(c == ("key", 4) for c in adb.calls[:3])  # menu ditemukan, tidak perlu menekan Kembali
+
+def test_explorer_asks_before_finishing_and_continues_on_request(tmp_path):
+    """Setelah layar habis, explorer bertanya. Lanjutkan → tombol yang belum dicoba ikut dipetakan. Selesai → berhenti."""
+    import threading
+    import time
+
+    from qa_agent.agent.control import RunControl
+
+    adb = FakeAdb({"HOME": HOME_XML, "USERS": USERS_XML, "REPORTS": REPORTS_XML}, "HOME",
+                  {("HOME", (0, 300, 1080, 420)): "USERS", ("HOME", (0, 440, 1080, 560)): "REPORTS"})
+    driver = AndroidDriver(adb, "com.demo.app", sleep=lambda s: None)
+    driver.start()
+    control = RunControl()
+    events: list[dict] = []
+    explorer = Explorer(driver=driver, llm=FakeLLM(explore_brain), guard=Guard("dev", ["com.demo.app"]),
+                        store=RunStore(tmp_path / "run"), auth=None, start_url="android://com.demo.app", max_minutes=1,
+                        control=control, on_event=events.append, ask_to_continue=True, probe_limit=1)
+    result: dict = {}
+    t = threading.Thread(target=lambda: result.setdefault("map", explorer.run()))
+    t.start()
+
+    def wait_ask(n):
+        deadline = time.time() + 10
+        while time.time() < deadline:
+            if sum(1 for e in events if e["type"] == "explore.ask") >= n and control.state == "paused":
+                return next(e for e in reversed(events) if e["type"] == "explore.ask")
+            time.sleep(0.05)
+        raise AssertionError("explorer tidak bertanya")
+
+    first = wait_ask(1)
+    assert first["screens"] == 2 and t.is_alive()  # Beranda + Pengguna (hanya 1 tombol dicoba)
+    control.resume()  # Lanjutkan memetakan
+    second = wait_ask(2)
+    assert second["screens"] == 3 and second["new_screens"] == 1  # Laporan ditemukan di putaran lanjutan
+    control.finish_explore()  # Selesai
+    t.join(10)
+    assert not t.is_alive()
+    assert result["map"].modules() == ["Beranda", "Pengguna", "Laporan"]
+
+
+def test_explorer_without_ask_finishes_directly(tmp_path):
+    adb = FakeAdb({"HOME": HOME_XML, "USERS": USERS_XML, "REPORTS": REPORTS_XML}, "HOME",
+                  {("HOME", (0, 300, 1080, 420)): "USERS", ("HOME", (0, 440, 1080, 560)): "REPORTS"})
+    driver = AndroidDriver(adb, "com.demo.app", sleep=lambda s: None)
+    driver.start()
+    from qa_agent.agent.control import RunControl
+
+    events: list[dict] = []
+    explorer = Explorer(driver=driver, llm=FakeLLM(explore_brain), guard=Guard("dev", ["com.demo.app"]),
+                        store=RunStore(tmp_path / "run"), auth=None, start_url="android://com.demo.app", max_minutes=1,
+                        control=RunControl(), on_event=events.append)
+    explorer.run()
+    assert not any(e["type"] == "explore.ask" for e in events)
