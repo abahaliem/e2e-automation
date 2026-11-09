@@ -23,5 +23,28 @@ def test_default_host_port(tmp_path: Path):
     assert s.max_parallel == 2
 
 
+def test_browsers_dir_used_when_present(tmp_path, monkeypatch):
+    from qa_agent.server.settings import configure_playwright_browsers
+
+    monkeypatch.delenv("PLAYWRIGHT_BROWSERS_PATH", raising=False)
+    s = ServerSettings(data_dir=tmp_path)
+    assert s.browsers_dir == tmp_path / "browsers"
+    assert configure_playwright_browsers(s) is None  # folder belum ada: biarkan default Playwright
+    (s.browsers_dir / "chromium_headless_shell-1243").mkdir(parents=True)
+    assert configure_playwright_browsers(s) == str(s.browsers_dir)
+    import os
+
+    assert os.environ["PLAYWRIGHT_BROWSERS_PATH"] == str(s.browsers_dir)
+
+
+def test_browsers_env_from_user_is_respected(tmp_path, monkeypatch):
+    from qa_agent.server.settings import configure_playwright_browsers
+
+    monkeypatch.setenv("PLAYWRIGHT_BROWSERS_PATH", "D:/lain")
+    s = ServerSettings(data_dir=tmp_path)
+    (s.browsers_dir / "chromium-1").mkdir(parents=True)
+    assert configure_playwright_browsers(s) == "D:/lain"
+
+
 def test_default_data_dir():
     assert default_data_dir() == Path.home() / "QA Agent"
