@@ -104,7 +104,9 @@ CREATE TABLE IF NOT EXISTS test_cases_index (
 );
 """
 
-UNFINISHED = ("queued", "running", "paused")
+# Run yang sedang dikerjakan worker. "paused" di database = sudah berhenti (mis. menunggu review / AI bermasalah)
+# dan tetap bisa dilanjutkan, jadi tidak diubah jadi Terhenti saat server menyala ulang.
+UNFINISHED = ("queued", "running")
 
 
 class AppRow(BaseModel):
