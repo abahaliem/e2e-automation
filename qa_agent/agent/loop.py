@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import threading
 from dataclasses import dataclass, field
 from typing import Callable, Literal
 
@@ -315,13 +316,38 @@ class AgentLoop:
         ))
         self._emit_done(tc_id, step_no, "ok", None, humanize("hint", None, masked), actor="manual")
 
+    def _chat(self, system: str, messages: list[Message]) -> str:
+        """Panggil AI di thread lain sambil worker terus memproses frame layar live (idle), supaya live tidak beku."""
+        idle = self.control.idle if self.control is not None else None
+        if idle is None:
+            return self.llm.chat(system, messages)
+        box: dict = {}
+
+        def call() -> None:
+            try:
+                box["reply"] = self.llm.chat(system, messages)
+            except BaseException as e:  # diteruskan ke worker
+                box["error"] = e
+
+        thread = threading.Thread(target=call, name="llm-call", daemon=True)
+        thread.start()
+        while thread.is_alive():
+            try:
+                idle()
+            except Exception:
+                pass
+            thread.join(0.05)
+        if "error" in box:
+            raise box["error"]
+        return box["reply"]
+
     def _decide(self, system: str, message: Message, element_count: int) -> Action:
-        reply = self.llm.chat(system, [message])
+        reply = self._chat(system, [message])
         try:
             return parse_action(reply, element_count)
         except ActionParseError as e:
             retry = [message, Message(role="assistant", text=reply or ""), prompts.retry_message(str(e))]
-            return parse_action(self.llm.chat(system, retry), element_count)
+            return parse_action(self._chat(system, retry), element_count)
 
     def _record(self, tc_id: str, step_no: int, obs: Observation, action: Action | None, element: Element | None,
                 result: str, screenshot: str | None = None, guard: str = "allowed") -> None:

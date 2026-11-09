@@ -8,6 +8,7 @@ from urllib.parse import urlsplit
 from pydantic import BaseModel, ValidationError, field_validator
 
 from qa_agent.agent import prompts
+from qa_agent.agent.control import RunControl
 from qa_agent.agent.loop import AgentLoop, LoopOutcome
 from qa_agent.agent.parser import ActionParseError, extract_json
 from qa_agent.drivers.base import Driver
@@ -20,6 +21,10 @@ from qa_agent.orchestrator.auth import AuthManager, LoginFailed
 
 class PlanError(Exception):
     """Test case tidak bisa disusun."""
+
+
+class _Interrupted(Exception):
+    """Run dihentikan QA di tengah persiapan test case."""
 
 
 class PlannedCase(BaseModel):
@@ -175,16 +180,36 @@ def is_logout_case(tc: QaTestCase) -> bool:
     return any(re.search(rf"(?<!\w){re.escape(k)}(?!\w)", text) for k in LOGOUT_KEYWORDS)
 
 
+_LOGGED_IN = re.compile(r"(sudah|telah|dalam keadaan|berhasil)\s+(login|log in|masuk|sign[ -]?in)|logged[ -]?in"
+                        r"|authenticated|sesi (login )?aktif", re.IGNORECASE)
+
+
+def requires_login(tc: QaTestCase) -> bool:
+    """Pre-condition test case menyebut pengguna sudah login."""
+    return bool(_LOGGED_IN.search(tc.precondition or ""))
+
+
+LOGOUT_GOAL = (
+    "Keluar (logout) dari akun di aplikasi ini sampai halaman login tampil. Cari tombol/menu Logout, Keluar, Sign out, "
+    "atau Log out: periksa menu samping (ikon garis tiga), menu profil/akun, tab Akun/Profil/Pengaturan, dan menu titik "
+    "tiga; gulir ke bawah bila perlu. Konfirmasi dialog logout bila muncul. Nyatakan done status pass setelah halaman "
+    "login tampil, atau status fail bila tombol logout benar-benar tidak ada."
+)
+
+
 class DeepRunner:
     def __init__(self, *, driver: Driver, loop: AgentLoop, auth: AuthManager | None, store: RunStore,
                  should_stop: Callable[[], bool] = lambda: False,
-                 on_event: Callable[[dict], None] = lambda e: None) -> None:
+                 on_event: Callable[[dict], None] = lambda e: None, control: RunControl | None = None) -> None:
         self.driver = driver
         self.loop = loop
         self.auth = auth
         self.store = store
         self.should_stop = should_stop
         self.on_event = on_event
+        self.control = control
+        self._logout_steps: list[dict] | None = None  # jalur logout yang berhasil, diputar ulang tanpa AI
+        self._logouts = 0
 
     def _emit(self, event: dict) -> None:
         try:
@@ -199,6 +224,9 @@ class DeepRunner:
                 continue  # sudah selesai (resume)
             if self.should_stop():
                 break
+            # Jeda QA juga berlaku di antara test case (persiapan layar tidak berjalan di balik layar)
+            if self.control is not None and self.control.wait_until_running() == "stop":
+                break
             self.store.drop_steps(tc.id)
             self._emit({"type": "tc.started", "tc_id": tc.id, "title": tc.title})
             try:
@@ -210,6 +238,9 @@ class DeepRunner:
                 tc.status_ai, tc.severity = judge(outcome, tc)
                 tc.actual = outcome.actual or outcome.reason
                 tc.ai_note = outcome.reason if outcome.final == "blocked" else ""
+            except _Interrupted:
+                self._emit({"type": "tc.finished", "tc_id": tc.id, "status": None})
+                break
             except (LLMError, LoginFailed):
                 self.store.write_testcases(cases)
                 self._emit({"type": "tc.finished", "tc_id": tc.id, "status": None})
@@ -224,11 +255,39 @@ class DeepRunner:
 
     def _prepare(self, tc: QaTestCase, needs_auth: bool) -> None:
         start = tc.start_url or "/"
-        if needs_auth and self.auth is not None:
+        if (needs_auth or requires_login(tc) or is_logout_case(tc)) and self.auth is not None:
             self.auth.start_authenticated(start)
         else:
             self.driver.new_session(None)
+            if getattr(self.driver, "keeps_login", False):
+                self._ensure_logged_out()
             self.driver.goto(start)
+
+    def _ensure_logged_out(self) -> None:
+        """Android: sesi login tetap tersimpan saat aplikasi dibuka ulang, jadi logout dulu (setara sesi baru di web)."""
+        if self.driver.observe().is_login_screen:
+            return
+        replay = getattr(self.driver, "replay_steps", None)
+        if self._logout_steps and replay is not None:
+            replay(self._logout_steps)
+            if self.driver.observe().is_login_screen:
+                return
+            self.driver.new_session(None)
+        self._logouts += 1
+        record = getattr(self.driver, "start_recording", None)
+        if record is not None:
+            record()
+        outcome = self.loop.run(f"LOGOUT-{self._logouts}", LOGOUT_GOAL, allow_logout=True)
+        stop_record = getattr(self.driver, "stop_recording", None)
+        steps = stop_record() if stop_record is not None else None
+        if outcome.error_kind == "interrupted":
+            raise _Interrupted()
+        if not self.driver.observe().is_login_screen:
+            reason = outcome.actual or outcome.reason or "halaman login tidak tampil"
+            raise RuntimeError(f"Tidak bisa logout otomatis sebelum test case ini: {reason}. "
+                               "Arahkan agent ke tombol logout, atau logout manual lewat Ambil alih")
+        if steps:
+            self._logout_steps = steps
 
     def _recover(self) -> None:
         try:

@@ -50,7 +50,7 @@ def _center(el: Element) -> tuple[float, float]:
 
 class AndroidDriver:
     def __init__(self, adb: Any, package: str, *, max_elements: int = 80, settle_seconds: float = 0.8,
-                 sleep: Callable[[float], None] = time.sleep, frame_interval: float = 0.35) -> None:
+                 sleep: Callable[[float], None] = time.sleep, frame_interval: float = 0.15) -> None:
         self.adb = adb
         self.package = package
         self.max_elements = max_elements
@@ -58,6 +58,9 @@ class AndroidDriver:
         self._sleep = sleep
         self.frame_interval = frame_interval
         self.login_mode = False  # kompatibel dengan WebDriver (tidak ada filter jaringan di Android)
+        self.keeps_login = True  # membuka ulang aplikasi tidak menghapus sesi login (beda dengan konteks browser baru)
+        self._recording: list[dict] | None = None
+        self.frame_workers = 2  # screencap HP lambat (~0,3-0,8 dtk): dua pengambil bergantian supaya live lebih mulus
         self.blocked_requests: list[str] = []
         self._size = (1080, 1920)
         self._credentials: dict[str, str] = {}
@@ -70,8 +73,10 @@ class AndroidDriver:
         # layar live
         self._frame_sink: Callable[[bytes, dict], None] | None = None
         self._streaming = False
-        self._frame_thread: threading.Thread | None = None
+        self._frame_threads: list[threading.Thread] = []
         self._frame_stop = threading.Event()
+        self._frame_lock = threading.Lock()
+        self._last_frame_at = 0.0
 
     # ---------- siklus hidup ----------
     def start(self) -> None:
@@ -101,6 +106,42 @@ class AndroidDriver:
         self._pending = None
         self._location = ""
         self._sleep(max(self.settle_seconds, 1.5))
+        self._wait_ready()
+
+    def _wait_ready(self, polls: int = 24, interval: float = 0.5) -> None:
+        """Tunggu splash/loading selesai: layar punya elemen dan sama pada dua pembacaan berturut-turut (maks ~12 detik)."""
+        previous = None
+        for _ in range(polls):
+            elements = self._dump()
+            key = screen_key(elements) if elements else None
+            if key is not None and key == previous:
+                return
+            previous = key
+            self._sleep(interval)
+
+    # ---------- rekam & putar ulang langkah (mis. jalur logout) ----------
+    def start_recording(self) -> None:
+        self._recording = []
+
+    def stop_recording(self) -> list[dict]:
+        steps, self._recording = (self._recording or []), None
+        return steps
+
+    def replay_steps(self, steps: list[dict]) -> bool:
+        """Putar ulang tap yang direkam. False bila ada langkah yang tidak ditemukan di layar."""
+        for step in steps:
+            el = None
+            for _ in range(3):  # beri waktu menu/dialog muncul
+                el = self._find_step(step, self._dump())
+                if el is not None:
+                    break
+                self._sleep(self.settle_seconds)
+            if el is None:
+                return False
+            self.adb.tap(*_center(el))
+            self._sleep(self.settle_seconds)
+        self._wait_ready(polls=8)
+        return True
 
     def save_auth_state(self, path: Path) -> None:
         path = Path(path)
@@ -293,7 +334,10 @@ class AndroidDriver:
         try:
             if kind in ("click", "select"):
                 self.adb.tap(*_center(element))  # type: ignore[arg-type]
-                self._pending = (origin, {"role": element.role, "name": element.name, "selector": element.selector})  # type: ignore[union-attr]
+                step = {"role": element.role, "name": element.name, "selector": element.selector}  # type: ignore[union-attr]
+                self._pending = (origin, step)
+                if self._recording is not None:
+                    self._recording.append(dict(step))
                 if kind == "select" and action.value:
                     self._sleep(self.settle_seconds)
                     target = next((e for e in self._dump() if e.name.lower() == action.value.lower()), None)
@@ -374,25 +418,37 @@ class AndroidDriver:
         time.sleep(ms / 1000)
 
     def _start_frames(self) -> None:
-        if self._frame_thread is not None and self._frame_thread.is_alive():
+        if any(t.is_alive() for t in self._frame_threads):
             return
         self._frame_stop.clear()
-        self._frame_thread = threading.Thread(target=self._frame_loop, name="android-frames", daemon=True)
-        self._frame_thread.start()
+        self._frame_threads = []
+        for i in range(max(1, self.frame_workers)):
+            t = threading.Thread(target=self._frame_loop, args=(i,), name=f"android-frames-{i}", daemon=True)
+            self._frame_threads.append(t)
+            t.start()
 
     def _stop_frames(self) -> None:
         self._frame_stop.set()
-        thread, self._frame_thread = self._frame_thread, None
-        if thread is not None and thread is not threading.current_thread():
-            thread.join(2)
+        threads, self._frame_threads = self._frame_threads, []
+        for t in threads:
+            if t is not threading.current_thread():
+                t.join(2)
 
-    def _frame_loop(self) -> None:
+    def _frame_loop(self, index: int = 0) -> None:
+        # Pengambil kedua mulai setengah interval kemudian, supaya frame datang bergantian, bukan bersamaan.
+        if index and self._frame_stop.wait(self.frame_interval / 2 * index):
+            return
         while not self._frame_stop.is_set():
             sink = self._frame_sink
             if sink is None:
                 break
+            started = time.monotonic()
             try:
                 jpeg = imaging.to_jpeg(self.adb.screencap(), max_width=FRAME_WIDTH, quality=60)
+                with self._frame_lock:
+                    if started < self._last_frame_at:
+                        continue  # frame yang lebih baru sudah terkirim: jangan mundur
+                    self._last_frame_at = started
                 sink(jpeg, {"width": self._size[0], "height": self._size[1]})
             except Exception:
                 pass  # HP sibuk / dicabut: coba lagi di putaran berikutnya

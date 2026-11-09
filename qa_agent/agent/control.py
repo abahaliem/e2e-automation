@@ -173,6 +173,24 @@ class RunControl:
             self._confirm_expected = False
 
     # ---------- titik kontrol (worker thread) ----------
+    def wait_until_running(self) -> Literal["run", "stop"]:
+        """Titik kontrol di antara test case: tunggu selama dijeda. Ambil alih/skip diteruskan ke loop."""
+        with self._cond:
+            while self._state == "paused":
+                idle = self.idle
+                if idle is None:
+                    self._cond.wait()
+                    continue
+                self._cond.wait(IDLE_INTERVAL)
+                self._cond.release()
+                try:
+                    idle()
+                except Exception:
+                    pass
+                finally:
+                    self._cond.acquire()
+            return "stop" if self._state == "stopped" else "run"
+
     def wait_before_decide(self, timeout: float | None = None) -> ControlDecision:
         return self._wait("decide", timeout)
 

@@ -132,4 +132,4 @@ def make_planner(rt: Runtime) -> DeepPlanner:
 
 def make_runner(rt: Runtime) -> DeepRunner:
     return DeepRunner(driver=rt.driver, loop=rt.loop, auth=rt.auth, store=rt.store, should_stop=_should_stop(rt),
-                      on_event=rt.on_event)
+                      on_event=rt.on_event, control=rt.control)

@@ -129,3 +129,95 @@ def test_old_steps_dropped_before_rerun(tmp_path):
     store.append_step(StepRecord(tc_id="LOGIN-1", step_no=1, timestamp="t", action="click"))
     runner.execute([tc(1)], needs_auth=True)
     assert [s.tc_id for s in store.read_steps()] == ["LOGIN-1"]
+
+
+# ---------------------------------------------------------------- jeda & logout (bug run Android)
+import threading
+import time
+
+from qa_agent.agent.control import RunControl
+from tests.fakes import el as _el
+
+LOGIN = screen("login", _el(1, "textbox", "Email"), _el(2, "textbox", "Password", input_type="password"),
+               _el(3, "button", "Masuk"))
+
+
+def test_pause_holds_before_next_case(tmp_path):
+    control = RunControl()
+    runner, loop, _, driver, _ = make(tmp_path, {"TC-PEN-001": PASS, "TC-PEN-002": PASS}, control=control)
+    control.pause()
+    t = threading.Thread(target=lambda: runner.execute([tc(1), tc(2)], needs_auth=False))
+    t.start()
+    time.sleep(0.4)
+    assert loop.calls == [] and driver.sessions == []  # tidak ada persiapan/eksekusi selama dijeda
+    control.resume()
+    t.join(5)
+    assert [c[0] for c in loop.calls] == ["TC-PEN-001", "TC-PEN-002"]
+
+
+def test_stop_while_paused_between_cases(tmp_path):
+    control = RunControl()
+    runner, loop, _, _, _ = make(tmp_path, {"TC-PEN-001": PASS}, control=control)
+    control.pause()
+    t = threading.Thread(target=lambda: runner.execute([tc(1)], needs_auth=False))
+    t.start()
+    time.sleep(0.2)
+    control.stop()
+    t.join(5)
+    assert loop.calls == []
+
+
+class LogoutLoop(StubLoop):
+    """Agent logout: memindahkan driver ke layar login."""
+
+    def __init__(self, outcomes, driver, works=True):
+        super().__init__(outcomes)
+        self.driver, self.works = driver, works
+
+    def run(self, tc_id, goal, *, allow_logout=False, login=False):
+        if tc_id.startswith("LOGOUT"):
+            self.calls.append((tc_id, allow_logout))
+            if self.works:
+                self.driver.current = url("login")
+                return PASS
+            return LoopOutcome(final="blocked", reason="tombol logout tidak ketemu")
+        return super().run(tc_id, goal, allow_logout=allow_logout, login=login)
+
+
+def make_android(tmp_path, outcomes, works=True):
+    from tests.fakes import FakeDriver
+
+    store = RunStore(tmp_path / "run")
+    driver = FakeDriver([HOME, LOGIN], url("home"))
+    driver.keeps_login = True  # Android: sesi login tetap tersimpan saat aplikasi dibuka ulang
+    driver.new_session = lambda auth_state=None: driver.sessions.append(auth_state)  # tetap di layar terakhir
+    loop = LogoutLoop(outcomes, driver, works)
+    runner = DeepRunner(driver=driver, loop=loop, auth=StubAuth(), store=store)
+    return runner, loop, driver
+
+
+def login_case(n, **kw):
+    return QaTestCase(id=f"TC-AUT-00{n}", module="Autentikasi", title=f"Login {n}", expected="ok",
+                      start_url=url("login"), **kw)
+
+
+def test_android_public_case_logs_out_first(tmp_path):
+    runner, loop, driver = make_android(tmp_path, {"TC-AUT-001": PASS, "TC-AUT-002": PASS})
+    cases = runner.execute([login_case(1), login_case(2)], needs_auth=False)
+    assert [c.status_ai for c in cases] == ["Pass", "Pass"]
+    logouts = [c for c in loop.calls if c[0].startswith("LOGOUT")]
+    assert logouts and all(allow for _, allow in logouts)  # logout diizinkan guard
+    assert driver.current == url("login")
+
+
+def test_android_logout_failure_blocks_with_clear_message(tmp_path):
+    runner, loop, _ = make_android(tmp_path, {"TC-AUT-001": PASS}, works=False)
+    cases = runner.execute([login_case(1)], needs_auth=False)
+    assert cases[0].status_ai == "Blocked" and "logout" in cases[0].actual.lower()
+    assert not any(c[0] == "TC-AUT-001" for c in loop.calls)
+
+
+def test_case_with_logged_in_precondition_uses_auth(tmp_path):
+    runner, loop, _, _, auth = make(tmp_path, {"TC-PEN-001": PASS})
+    runner.execute([tc(1, precondition="User sudah login sebagai admin")], needs_auth=False)
+    assert auth.started == [url("home")]
