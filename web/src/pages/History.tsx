@@ -65,6 +65,7 @@ export function HistoryPage() {
             <Skeleton className="h-9" />
           </div>
         ) : runs.data && runs.data.length > 0 ? (
+          <div className="overflow-x-auto">
           <table className="w-full text-sm [&_td]:whitespace-nowrap [&_th]:whitespace-nowrap">
             <thead className="border-b border-ink-700 bg-ink-850 text-left text-xs text-fg-muted">
               <tr>
@@ -75,7 +76,6 @@ export function HistoryPage() {
                 <th className="px-4 py-2.5 font-medium">Mulai</th>
                 <th className="px-4 py-2.5 font-medium" />
                 <th className="px-4 py-2.5 text-right font-medium">Dokumen</th>
-                {can.write && <th className="px-4 py-2.5" />}
               </tr>
             </thead>
             <tbody className="divide-y divide-ink-700">
@@ -109,15 +109,20 @@ export function HistoryPage() {
                         </Link>
                       )}
                     </td>
-                    <td className="px-4 py-3">{!live && <DocButtons runId={r.id} />}</td>
-                    {can.write && (
-                      <td className="px-4 py-3 text-right">{!live && <DeleteRun runId={r.id} onDeleted={() => setDeleted(r.id)} onError={setError} />}</td>
-                    )}
+                    <td className="px-4 py-3">
+                      {!live && (
+                        <div className="flex items-center justify-end gap-1">
+                          <DocButtons runId={r.id} />
+                          {can.write && <DeleteRun runId={r.id} onDeleted={() => setDeleted(r.id)} onError={setError} />}
+                        </div>
+                      )}
+                    </td>
                   </tr>
                 );
               })}
             </tbody>
           </table>
+          </div>
         ) : (
           <EmptyState
             title="Belum ada run"

@@ -72,7 +72,11 @@ def test_runs_and_interrupted(store):
     r3 = store.create_run(app_id=app.id, mode="deep", module="Pengguna", environment="dev", folder="c")
     store.update_run(r3.id, status="completed")
     assert store.get_run(r1.id).counts == {"Pass": 1}
+    r4 = store.create_run(app_id=app.id, mode="deep", module="Pengguna", environment="dev", folder="d")
+    store.update_run(r4.id, status="paused", note="Menunggu review test case")
     assert store.mark_unfinished_interrupted() == 2
+    assert store.get_run(r4.id).status == "paused"  # run dijeda (mis. menunggu review) tidak sedang jalan
+    store.delete_run(r4.id)
     assert store.get_run(r1.id).status == "interrupted"
     assert store.get_run(r2.id).status == "interrupted"
     assert store.get_run(r3.id).status == "completed"
