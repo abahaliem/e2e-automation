@@ -93,7 +93,7 @@ def test_install_apk_detects_new_package(ctx):
     assert r.json()["package"] == "com.baru.app"
     saved = state["installed"][0]
     assert saved.endswith(".apk") and "apks" in saved
-    # pasang ulang: tidak ada paket baru â†’ pengguna memilih dari daftar
+    # pasang ulang: tidak ada paket baru → pengguna memilih dari daftar
     r = client.post("/api/devices/R58M123/install?filename=demo.apk", content=b"PK\x03\x04apk")
     assert r.json()["package"] is None and "com.demo.app" in r.json()["packages"]
 

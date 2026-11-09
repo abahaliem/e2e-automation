@@ -1,4 +1,4 @@
-import { MonitorPlay } from "@phosphor-icons/react";
+﻿import { MonitorPlay } from "@phosphor-icons/react";
 import type { CSSProperties, MouseEvent, WheelEvent } from "react";
 import { cn } from "@/lib/cn";
 import type { Frame, ManualEvent } from "@/lib/types";
@@ -38,12 +38,15 @@ export function LiveView({
   takeover,
   onInput,
   className,
+  placeholder = false,
 }: {
   frame: Frame | null;
   overlay: Overlay;
   takeover: boolean;
   onInput: (event: ManualEvent) => void;
   className?: string;
+  /** Tampilkan placeholder dengan ukuran dari frame (mis. bingkai HP sebelum frame pertama). */
+  placeholder?: boolean;
 }) {
   const ratio = frame ? `${frame.width} / ${frame.height}` : "16 / 9";
   const portrait = !!frame && frame.height > frame.width;
@@ -73,13 +76,13 @@ export function LiveView({
         className,
       )}
     >
-      {frame ? (
+      {frame && !placeholder ? (
         <img src={frame.url} alt="Tampilan langsung browser yang sedang diuji agent" draggable={false} className="block h-full w-full object-contain" />
       ) : (
         <div className="absolute inset-0 grid place-items-center bg-ink-850 text-fg-muted">
           <div className="flex flex-col items-center gap-2 text-sm">
             <MonitorPlay className="text-3xl" />
-            Menunggu layar dari browser...
+            {placeholder ? "Menunggu layar dari HP..." : "Menunggu layar dari browser..."}
           </div>
         </div>
       )}
