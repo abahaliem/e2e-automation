@@ -224,19 +224,37 @@ class AndroidDriver:
             if self.current_url == location:
                 return
         self.new_session(None)
-        for step in target:
+        i = 0
+        while i < len(target):
             elements = self._dump()
-            el = next((e for e in elements if step.get("selector") and e.selector == step["selector"]
-                       and e.name == step.get("name")), None) or \
-                next((e for e in elements if e.role == step.get("role") and e.name == step.get("name")), None)
+            if self._is_login(elements):
+                return  # sesi login habis: biarkan AuthManager login dulu, lalu goto dipanggil lagi
+            el = self._find_step(target[i], elements)
             if el is None:
-                raise RuntimeError(f"Layar {location} tidak bisa dicapai: '{step.get('name')}' tidak ditemukan")
-            self.adb.tap(*_center(el))
+                # Langkah yang tidak ada di layar dilewati (mis. tombol login saat aplikasi sudah login).
+                j = next((k for k in range(i + 1, len(target)) if self._find_step(target[k], elements)), None)
+                if j is None:
+                    if self._locate(elements) == location:
+                        return  # sudah tiba (langkah sisa tidak diperlukan, mis. tombol login)
+                    raise RuntimeError(f"Layar {location} tidak bisa dicapai: '{target[i].get('name')}' tidak ditemukan")
+                i, el = j, self._find_step(target[j], elements)
+            self.adb.tap(*_center(el))  # type: ignore[arg-type]
             self._sleep(self.settle_seconds)
+            i += 1
         self._path_here = list(target)
-        reached = self.current_url
-        if reached != location:
+        elements = self._dump()
+        reached = self._locate(elements)
+        if reached != location and not self._is_login(elements):
             raise RuntimeError(f"Layar {location} tidak bisa dicapai (tiba di {reached})")
+
+    @staticmethod
+    def _find_step(step: dict, elements: list[Element]) -> Element | None:
+        return next((e for e in elements if step.get("selector") and e.selector == step["selector"]
+                     and e.name == step.get("name")), None) or \
+            next((e for e in elements if e.role == step.get("role") and e.name == step.get("name")), None)
+
+    def _is_login(self, elements: list[Element]) -> bool:
+        return Observation(location=self._location or f"android://{self.package}/", elements=elements).is_login_screen
 
     # ---------- aksi ----------
     def set_credentials(self, username: str, password: str) -> None:

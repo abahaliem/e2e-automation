@@ -141,6 +141,7 @@ class ScreenInfo(BaseModel):
     depth: int = 0
     parent: str | None = None
     public: bool = False
+    nav_path: list[dict] = Field(default_factory=list)  # Android: urutan tap dari awal aplikasi ke layar ini
 
 
 class AppMap(BaseModel):

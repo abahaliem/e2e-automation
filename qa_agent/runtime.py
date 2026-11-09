@@ -6,7 +6,7 @@ import threading
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Callable
+from typing import Any, Callable
 
 from qa_agent.agent.control import RunControl
 from qa_agent.agent.loop import AgentLoop
@@ -48,7 +48,7 @@ class Runtime:
     cfg: Config
     store: RunStore
     environment: str
-    driver: WebDriver
+    driver: Any  # WebDriver atau AndroidDriver
     llm: LLMClient
     guard: Guard
     masker: Masker
@@ -64,15 +64,21 @@ def build_runtime(cfg: Config, store: RunStore, project_dir: Path, *, environmen
                   llm: LLMClient | None = None, now: datetime | None = None,
                   credentials: Credentials | None = None, api_key: str | None = None,
                   control: RunControl | None = None, on_event: Callable[[dict], None] | None = None,
-                  auth_state: Path | None = None) -> Runtime:
+                  auth_state: Path | None = None, device_serial: str | None = None) -> Runtime:
     """Parameter eksplisit (kredensial, API key, control, on_event) dipakai dashboard; CLI membaca environment."""
     guard = Guard(environment, cfg.domains(), extra_keywords=cfg.guard.extra_risky_keywords,
                   login_endpoints=cfg.target.login_endpoints)
     creds = credentials or cfg.credentials()
     masker = Masker([creds.password])
-    driver = WebDriver(cfg.target.url, headless=cfg.browser.headless, viewport=cfg.browser.size,
-                       request_filter=guard.should_block_request if guard.production else None,
-                       tracked_domains=cfg.domains())
+    if cfg.target.platform == "android":
+        from qa_agent.drivers.adb import Adb
+        from qa_agent.drivers.android import AndroidDriver
+
+        driver = AndroidDriver(Adb(serial=device_serial), cfg.target.package)
+    else:
+        driver = WebDriver(cfg.target.url, headless=cfg.browser.headless, viewport=cfg.browser.size,
+                           request_filter=guard.should_block_request if guard.production else None,
+                           tracked_domains=cfg.domains())
     driver.set_credentials(creds.username, creds.password)
     stop = StopFlag()
     data_prefix = f"QA-AUTO-{(now or datetime.now()):%Y%m%d-%H%M}"
@@ -80,6 +86,7 @@ def build_runtime(cfg: Config, store: RunStore, project_dir: Path, *, environmen
     emit = on_event or (lambda e: None)
     common = dict(driver=driver, llm=llm, guard=guard, store=store, masker=masker, data_prefix=data_prefix,
                   max_steps=cfg.limits.max_steps_per_tc, vision=cfg.llm.vision, should_stop=stop,
+                  platform=cfg.target.platform,
                   control=control, on_event=emit)
     login_loop = AgentLoop(**common)
 

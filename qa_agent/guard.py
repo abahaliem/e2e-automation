@@ -49,6 +49,8 @@ class Guard:
             return True
         if not parts.scheme and not parts.netloc:
             return True  # URL relatif
+        if parts.scheme == "android":
+            return parts.netloc.lower() in self.allowed_domains  # layar di dalam paket aplikasi yang dites
         if parts.scheme not in ("http", "https"):
             return False
         host = (parts.hostname or "").lower()
