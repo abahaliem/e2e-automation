@@ -96,3 +96,20 @@ def test_locked_report_propagates(tmp_path, monkeypatch):
     monkeypatch.setattr(Workbook, "save", lambda self, f: (_ for _ in ()).throw(PermissionError(13, "denied")))
     with pytest.raises(ReportLockedError):
         build_reports(store)
+
+
+def test_template_generic_status_not_counted_as_review(tmp_path):
+    from tests.unit.test_excel import office_template
+
+    template = office_template(tmp_path / "t.xlsx", ["No. TC", "Skenario", "Status", "Keterangan"])
+    store = sample_run(tmp_path / "run")
+    build_reports(store, template=template)
+    build_reports(store, template=template)  # impor ulang Excel versi template
+    review = store.read_review()
+    assert not any(v.get("status_final") for v in review.values())  # status = salinan status AI, bukan review
+    wb = load_workbook(store.report_xlsx)
+    ws = wb["Test Cases"]
+    ws.cell(3, 3).value = "Fail"  # reviewer mengubah TC-PEN-002 (Perlu Review → Fail)
+    wb.save(store.report_xlsx)
+    build_reports(store, template=template)
+    assert store.read_review()["TC-PEN-002"]["status_final"] == "Fail"
