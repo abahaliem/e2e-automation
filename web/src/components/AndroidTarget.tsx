@@ -1,6 +1,5 @@
 import {
   ArrowsClockwise,
-  CheckCircle,
   Circle,
   DesktopTower,
   DeviceMobile,
@@ -13,10 +12,10 @@ import {
 } from "@phosphor-icons/react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
-import { Alert, Field, Select } from "@/components/ui";
+import { Alert } from "@/components/ui";
 import { ApiError, api } from "@/lib/api";
 import { cn } from "@/lib/cn";
-import type { Device } from "@/lib/types";
+import type { ApkChoice, Device } from "@/lib/types";
 import { UsbDebuggingSteps, useDevices } from "@/pages/Devices";
 
 const BADGE: Record<string, { text: string; tone: string }> = {
@@ -24,6 +23,10 @@ const BADGE: Record<string, { text: string; tone: string }> = {
   unauthorized: { text: "Butuh izin", tone: "text-review" },
   offline: { text: "Offline", tone: "text-fail" },
 };
+
+function formatMb(bytes: number): string {
+  return `${(bytes / 1024 / 1024).toLocaleString("id-ID", { maximumFractionDigits: 1 })} MB`;
+}
 
 function deviceTitle(d: Device) {
   return d.model || d.serial;
@@ -72,12 +75,15 @@ export function AndroidTarget({
   pkg,
   onPackage,
   error,
+  onApk,
 }: {
   serial: string;
   onSerial: (serial: string) => void;
   pkg: string;
   onPackage: (pkg: string) => void;
   error?: string;
+  /** APK hasil unggah yang dipasang saat run dimulai (mockup 02b), atau null bila memakai aplikasi terpasang. */
+  onApk?: (choice: ApkChoice | null) => void;
 }) {
   const devices = useDevices();
   const list = devices.data?.devices ?? [];
@@ -94,13 +100,21 @@ export function AndroidTarget({
     queryFn: () => api.devicePackages(serial),
     enabled: !!serial,
   });
-  const install = useMutation({
-    mutationFn: (file: File) => api.installApk(serial, file),
-    onSuccess: (r) => {
-      if (r.package) onPackage(r.package);
-      packages.refetch();
-    },
+  const [uploadedName, setUploadedName] = useState<string | null>(null);
+  const [grant, setGrant] = useState(true);
+  const [uninstall, setUninstall] = useState(false);
+  const upload = useMutation({
+    mutationFn: (file: File) => api.uploadApk(serial, file),
+    onSuccess: (r) => onPackage(r.package),
   });
+  const deviceName = (() => {
+    const d = list.find((x) => x.serial === serial);
+    return d ? deviceTitle(d) : "HP";
+  })();
+
+  useEffect(() => {
+    onApk?.(source === "apk" && upload.data ? { file: upload.data.file, grant, uninstall } : null);
+  }, [source, upload.data, grant, uninstall, onApk]);
 
   const missing = devices.error instanceof ApiError && devices.error.status === 503;
   const apps = packages.data?.apps ?? (packages.data?.packages ?? []).map((p) => ({ package: p, version: null }));
@@ -230,46 +244,78 @@ export function AndroidTarget({
           </>
         ) : (
           <div className="flex flex-col gap-3">
-            <label
-              htmlFor="apk-file"
-              className="flex h-32 cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-ink-600 bg-ink-900 text-sm text-fg-muted hover:bg-ink-850"
-            >
-              <FileArrowUp className="text-2xl" />
-              <span className="font-medium text-fg">{install.isPending ? "Memasang APK ke HP..." : "Pilih atau tarik file .apk ke sini"}</span>
-              <span className="text-xs">Maks 300 MB. Dipasang otomatis ke HP yang dipilih.</span>
-            </label>
+            {upload.data && uploadedName ? (
+              <div className="flex items-center gap-4 rounded-xl border border-accent-line bg-accent-soft px-4 py-3">
+                <FileArrowUp className="shrink-0 text-2xl text-accent" />
+                <div className="min-w-0 flex-1">
+                  <div className="truncate text-sm font-medium">{uploadedName}</div>
+                  <div className="truncate text-xs text-fg-muted">
+                    <span className="font-mono">{upload.data.package}</span>
+                    {`, versi ${upload.data.version ?? "-"}, ${formatMb(upload.data.size_bytes)}`}
+                  </div>
+                </div>
+                <span className="shrink-0 rounded-md border border-ink-700 bg-ink-900 px-2 py-0.5 text-xs text-pass">Siap di-install</span>
+                <label htmlFor="apk-file" className="shrink-0 cursor-pointer text-sm text-accent">
+                  Ganti file
+                </label>
+              </div>
+            ) : (
+              <label
+                htmlFor="apk-file"
+                className="flex h-32 cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-ink-600 bg-ink-900 text-sm text-fg-muted hover:bg-ink-850"
+              >
+                <FileArrowUp className="text-2xl" />
+                <span className="font-medium text-fg">{upload.isPending ? "Membaca file APK..." : "Pilih atau tarik file .apk ke sini"}</span>
+                <span className="text-xs">Maks 300 MB. Dipasang ke HP saat run dimulai.</span>
+              </label>
+            )}
             <input
               id="apk-file"
               aria-label="File APK"
               type="file"
               accept=".apk"
               className="sr-only"
-              disabled={!serial || install.isPending}
+              disabled={!serial || upload.isPending}
               onChange={(e) => {
                 const file = e.target.files?.[0];
-                if (file) install.mutate(file);
+                if (file) {
+                  setUploadedName(file.name);
+                  upload.mutate(file);
+                }
+                e.target.value = "";
               }}
             />
-            {install.data?.package && (
-              <p className="flex items-center gap-1.5 text-sm text-pass">
-                <CheckCircle weight="fill" />
-                {install.data.package} terpasang dan dipilih
+            {upload.data && (
+              <p className="text-sm text-fg-muted">
+                {upload.data.installed_version
+                  ? `${deviceName} sudah punya ${upload.data.package} versi ${upload.data.installed_version}. Versi ${upload.data.version ?? "baru"} akan di-install di atasnya, data login tetap ada.`
+                  : `${upload.data.package} belum ada di ${deviceName}. Aplikasi di-install saat run dimulai.`}
               </p>
             )}
-            {install.data && !install.data.package && (
-              <Field label="Aplikasi di HP" htmlFor="run-package" error={error} hint={install.data.message}>
-                <Select id="run-package" className="font-mono" value={pkg} onChange={(e) => onPackage(e.target.value)}>
-                  <option value="">Pilih aplikasi...</option>
-                  {install.data.packages.map((p) => (
-                    <option key={p} value={p}>
-                      {p}
-                    </option>
-                  ))}
-                </Select>
-              </Field>
+            {upload.data && (
+              <div className="flex flex-col gap-2 text-sm">
+                <label className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={grant}
+                    onChange={(e) => setGrant(e.target.checked)}
+                    className="h-4 w-4 accent-[var(--color-accent)]"
+                  />
+                  Beri semua izin aplikasi otomatis
+                </label>
+                <label className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={uninstall}
+                    onChange={(e) => setUninstall(e.target.checked)}
+                    className="h-4 w-4 accent-[var(--color-accent)]"
+                  />
+                  Hapus aplikasi setelah run selesai
+                </label>
+              </div>
             )}
-            {install.error && <Alert tone="error">{(install.error as Error).message}</Alert>}
-            {error && !install.data && <p className="text-xs text-fail">{error}</p>}
+            {upload.error && <Alert tone="error">{(upload.error as Error).message}</Alert>}
+            {error && !upload.data && <p className="text-xs text-fail">{error}</p>}
           </div>
         )}
       </section>

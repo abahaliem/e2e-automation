@@ -48,6 +48,21 @@ export interface Device {
   android_version: string | null;
 }
 
+export interface ApkUpload {
+  file: string;
+  package: string;
+  version: string | null;
+  version_code: number | null;
+  size_bytes: number;
+  installed_version: string | null;
+}
+
+export interface ApkChoice {
+  file: string;
+  grant: boolean;
+  uninstall: boolean;
+}
+
 export interface InstallResult {
   package: string | null;
   packages: string[];
@@ -106,6 +121,9 @@ export interface RunInput {
   environment: "dev" | "production";
   confirm_each_step: boolean;
   device_serial?: string | null;
+  apk_file?: string | null;
+  apk_grant?: boolean;
+  apk_uninstall?: boolean;
 }
 
 export type ControlCommand =

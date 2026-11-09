@@ -19,6 +19,7 @@ vi.mock("@/lib/api", async (orig) => {
       listDevices: vi.fn(),
       devicePackages: vi.fn(),
       installApk: vi.fn(),
+      uploadApk: vi.fn(),
     },
   };
 });
@@ -81,20 +82,38 @@ describe("Run baru: Android (sesuai mockup)", () => {
     expect(img.getAttribute("src")).toContain("/api/devices/R58M123/screen");
   });
 
-  it("upload APK memasang lalu memilih paketnya", async () => {
-    mocked.installApk.mockResolvedValue({ package: "com.baru.app", packages: ["com.baru.app", "com.demo.app"], message: "", file: "x.apk" });
+  it("upload APK (mockup 02b): kartu file, info versi terpasang, opsi, dipasang saat run", async () => {
+    mocked.uploadApk.mockResolvedValue({
+      file: "20261109-1200_hr-mobile-3.9.0-debug.apk", package: "com.demo.app", version: "3.9.0", version_code: 39,
+      size_bytes: 50_540_000, installed_version: "3.8.1",
+    });
     const user = await openAndroid();
     await waitFor(() => expect(screen.getByRole("radio", { name: /SM A546E/ })).toHaveAttribute("aria-checked", "true"));
     await user.click(screen.getByRole("radio", { name: /Upload APK/ }));
-    const file = new File(["PK"], "Demo.apk", { type: "application/vnd.android.package-archive" });
+    const file = new File(["PK"], "hr-mobile-3.9.0-debug.apk", { type: "application/vnd.android.package-archive" });
     await user.upload(screen.getByLabelText("File APK"), file);
-    await waitFor(() => expect(mocked.installApk).toHaveBeenCalledWith("R58M123", file));
-    expect(await screen.findByText(/com.baru.app terpasang/)).toBeInTheDocument();
+    await waitFor(() => expect(mocked.uploadApk).toHaveBeenCalledWith("R58M123", file));
+    expect(await screen.findByText("hr-mobile-3.9.0-debug.apk")).toBeInTheDocument();
+    expect(screen.getByText("Siap di-install")).toBeInTheDocument();
+    expect(screen.getByText(/versi 3.9.0, 48,2 MB/)).toBeInTheDocument();
+    expect(screen.getByText(/sudah punya com.demo.app versi 3.8.1/)).toBeInTheDocument();
+    expect(screen.getByRole("checkbox", { name: /Beri semua izin/ })).toBeChecked();
+    await user.click(screen.getByRole("checkbox", { name: /Hapus aplikasi setelah run/ }));
     await user.click(screen.getByRole("button", { name: /Mulai run/ }));
     await waitFor(() => expect(mocked.createRun).toHaveBeenCalled());
-    expect(mocked.createApp.mock.calls[0][0]).toMatchObject({ url: "android://com.baru.app" });
+    expect(mocked.createApp.mock.calls[0][0]).toMatchObject({ url: "android://com.demo.app" });
+    expect(mocked.createRun.mock.calls[0][0]).toMatchObject({
+      apk_file: "20261109-1200_hr-mobile-3.9.0-debug.apk", apk_grant: true, apk_uninstall: true, device_serial: "R58M123",
+    });
+    expect(mocked.installApk).not.toHaveBeenCalled();
   });
 
+  it("baris bawah sesuai mockup: Profil AI, Yang diuji, Akun test", async () => {
+    await openAndroid();
+    expect(await screen.findByLabelText("Profil AI")).toBeInTheDocument();
+    expect(screen.getByLabelText("Yang diuji")).toHaveValue("explore");
+    expect(screen.getByLabelText("Akun test")).toBeInTheDocument();
+  });
   it("tanpa perangkat: petunjuk dan tombol run nonaktif", async () => {
     mocked.listDevices.mockResolvedValue({ devices: [] });
     await openAndroid();
