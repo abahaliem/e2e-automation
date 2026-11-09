@@ -230,3 +230,52 @@ def test_typing_empty_credential_is_reported():
     result = d.execute(Action(action="type", element=1, value="{{username}}"), find(obs, "Email"))
     assert not result.ok and not result.fatal and "akun test" in result.error.lower()
     assert not [c for c in adb.calls if c[0] == "text"]
+
+
+# ---------------------------------------------------------------- splash, logout, layar live
+SPLASH_XML = hierarchy()  # splash/loading: belum ada elemen
+
+
+def test_new_session_waits_until_splash_finished():
+    adb = FakeAdb({"SPLASH": SPLASH_XML, "LOGIN": LOGIN_XML}, "SPLASH")
+    dumps = {"n": 0}
+    original = adb.dump_ui
+
+    def dump():
+        dumps["n"] += 1
+        if dumps["n"] >= 3:
+            adb.current = "LOGIN"  # splash selesai setelah beberapa saat
+        return original()
+
+    adb.dump_ui = dump
+    d = AndroidDriver(adb, "com.demo.app", sleep=lambda s: None)
+    d.start()
+    d.new_session(None)
+    assert d.observe().is_login_screen
+
+
+def test_keeps_login_and_records_replayable_steps():
+    d, adb = make()
+    assert d.keeps_login is True
+    d.start_recording()
+    obs = d.observe()
+    d.execute(Action(action="click", element=4), find(obs, "MASUK"))
+    home = d.observe()
+    d.execute(Action(action="click", element=2), find(home, "Pengguna"))
+    steps = d.stop_recording()
+    assert [s["name"] for s in steps] == ["MASUK", "Pengguna"]
+    assert d.stop_recording() == []
+    d.new_session(None)
+    assert d.replay_steps(steps) is True and adb.current == "USERS"
+    d.new_session(None)
+    assert d.replay_steps([{"role": "button", "name": "Tidak ada", "selector": ""}]) is False
+
+
+def test_live_frames_use_parallel_capture():
+    d, adb = make()
+    frames = []
+    d.set_frame_sink(lambda jpeg, meta: frames.append(meta))
+    d.set_streaming(True)
+    time.sleep(0.5)
+    d.set_streaming(False)
+    assert len(frames) >= 3 and d.frame_workers >= 2

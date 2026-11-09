@@ -145,3 +145,17 @@ def test_without_control_unchanged(tmp_path):
     loop = AgentLoop(driver=driver, llm=FakeLLM([act(action="click", element=1), act(action="done", status="pass", actual="ok")]),
                      guard=Guard("dev", ["app.test"]), store=store, masker=Masker([]), data_prefix="X")
     assert loop.run("TC-1", "x").final == "done"
+
+
+def test_live_frames_keep_flowing_while_ai_thinks(tmp_path):
+    """Selama AI berpikir, idle (memproses frame live) tetap dipanggil dari worker thread."""
+    driver = FakeDriver([HOME, USERS], url("home"), {(url("home"), "Pengguna"): url("users")})
+    control = RunControl()
+    idles = []
+    worker = threading.current_thread()
+    control.idle = lambda: idles.append(threading.current_thread() is worker)
+    loop, llm, _, _ = make(tmp_path, driver, [act(action="done", status="pass", actual="ok")], control=control)
+    slow = llm.chat
+    llm.chat = lambda system, messages: (time.sleep(0.5), slow(system, messages))[1]
+    assert loop.run("TC-1", "x").final == "done"
+    assert len(idles) >= 2 and all(idles)  # idle hanya di thread worker (Playwright tidak thread-safe)
