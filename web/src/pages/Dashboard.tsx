@@ -1,13 +1,13 @@
-﻿import { AndroidLogo, Globe, MonitorPlay, PauseCircle, Play, TrendDown, TrendUp } from "@phosphor-icons/react";
+import { AndroidLogo, DeviceMobileCamera, Globe, MonitorPlay, PauseCircle, Play, TrendDown, TrendUp } from "@phosphor-icons/react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { CountsInline, DocButtons, PlatformIcon } from "@/components/RunBits";
 import { StatusBadge } from "@/components/StatusBadge";
 import { Card, EmptyState, PageHeader, Select, Skeleton } from "@/components/ui";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/cn";
-import { formatDateTime, percent, scopeLabel } from "@/lib/format";
+import { duration, formatDateTime, percent, scopeLabel } from "@/lib/format";
 import type { Run } from "@/lib/types";
 import { useGlobalEvents } from "@/lib/ws";
 
@@ -222,18 +222,55 @@ export function DashboardPage() {
   );
 }
 
+function useTick(ms: number): number {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), ms);
+    return () => clearInterval(t);
+  }, [ms]);
+  return now;
+}
+
 function RunningCard({ run }: { run: Run }) {
   const qc = useQueryClient();
   const pausedByError = run.status === "paused";
   const pausedByQa = run.control_state === "paused";
   const queued = run.status === "queued";
+  const state = useQuery({ queryKey: ["run-state", run.id], queryFn: () => api.runState(run.id), refetchInterval: 5000 });
+  const tick = useTick(1000);
+  const [thumbFailed, setThumbFailed] = useState(false);
+  const thumbTick = Math.floor(tick / 5000);
+
+  const cases = state.data?.cases ?? [];
+  const done = cases.filter((c) => c.status).length;
+  const total = cases.length;
+  const progressText =
+    run.mode === "explore"
+      ? `${state.data?.screens ?? 0} layar dipetakan`
+      : total
+        ? `Test case ${Math.min(done + 1, total)} dari ${total}`
+        : "Menyusun test case...";
+  const pct = run.mode === "explore" ? Math.min(95, (state.data?.screens ?? 0) * 5) : total ? Math.round((done / total) * 100) : 0;
+  const paused = pausedByError || pausedByQa;
+
   return (
     <article className="overflow-hidden rounded-xl border border-ink-700 bg-ink-900">
-      <div className="grid aspect-[16/7] place-items-center border-b border-ink-700 bg-ink-850 text-fg-muted">
-        <div className="flex flex-col items-center gap-2 text-xs">
-          <MonitorPlay className="text-3xl" />
-          <span className="font-mono">{run.url.replace(/^https?:\/\//, "")}</span>
-        </div>
+      <div className="grid aspect-[16/7] place-items-center overflow-hidden border-b border-ink-700 bg-ink-850 text-fg-muted">
+        {!thumbFailed && !queued ? (
+          <img
+            src={`/api/runs/${run.id}/thumbnail?t=${thumbTick}`}
+            alt={`Layar live run ${run.app_name}`}
+            onError={() => setThumbFailed(true)}
+            className={cn("h-full w-full bg-white", run.platform === "android" ? "object-contain" : "object-cover object-top")}
+          />
+        ) : (
+          <div className="flex flex-col items-center gap-2 text-xs">
+            {run.platform === "android" ? <DeviceMobileCamera className="text-3xl" /> : <MonitorPlay className="text-3xl" />}
+            <span className="font-mono">
+              {run.platform === "android" ? `${run.device_serial ?? "HP"} tersambung` : run.url.replace(/^https?:\/\//, "")}
+            </span>
+          </div>
+        )}
       </div>
       <div className="p-4">
         <div className="flex items-center justify-between">
@@ -258,8 +295,19 @@ function RunningCard({ run }: { run: Run }) {
         <div className="mt-1 text-sm text-fg-muted">{run.mode === "explore" ? "Jelajahi seluruh aplikasi" : `Uji modul ${run.module}`}</div>
         {pausedByError && run.note && <div className="mt-2 line-clamp-2 text-xs text-review">{run.note}</div>}
         <div className="mt-3 flex items-center justify-between text-xs text-fg-muted">
-          <span>Mulai {formatDateTime(run.started_at)}</span>
-          {Object.keys(run.counts).length > 0 && <CountsInline run={run} />}
+          <span>{queued ? "Menunggu giliran" : progressText}</span>
+          <span data-testid="run-timer" className="font-mono">
+            {duration(run.started_at, null, new Date(tick))}
+          </span>
+        </div>
+        <div
+          role="progressbar"
+          aria-valuenow={pct}
+          aria-valuemin={0}
+          aria-valuemax={100}
+          className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-ink-800"
+        >
+          <div className={cn("h-full", paused ? "bg-review" : "bg-accent")} style={{ width: `${pct}%` }} />
         </div>
         {pausedByError ? (
           <button

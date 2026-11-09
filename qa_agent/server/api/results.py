@@ -124,6 +124,17 @@ def run_file(run_id: int, path: str, request: Request) -> FileResponse:
     return FileResponse(target)
 
 
+@router.get("/runs/{run_id}/thumbnail")
+def run_thumbnail(run_id: int, request: Request) -> FileResponse:
+    """Screenshot terbaru run (kartu Sedang berjalan di Dashboard)."""
+    rs = _run_store(request, run_id)
+    shots = list(rs.screenshots_dir.glob("*.png")) if rs.screenshots_dir.is_dir() else []
+    if not shots:
+        raise deps.not_found("Screenshot")
+    latest = max(shots, key=lambda p: p.stat().st_mtime)
+    return FileResponse(latest, media_type="image/png", headers={"cache-control": "no-store"})
+
+
 @router.get("/runs/{run_id}/download/{kind}")
 def download(run_id: int, kind: str, request: Request) -> FileResponse:
     if kind not in ("xlsx", "html", "pdf"):

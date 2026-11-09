@@ -258,3 +258,20 @@ def test_live_run_control_409_and_pause(ctx, demo):
     gate.set()
     wait_for(lambda: client.get(f"/api/runs/{run_id}").json()["status"] == "completed")
     assert client.get(f"/api/apps/{app['id']}/modules").json()["modules"] == ["Autentikasi", "Dashboard", "Pengguna", "Laporan"]
+
+
+def test_run_thumbnail_latest_screenshot(ctx):
+    import os
+    import time
+
+    client, _, _, settings, _ = ctx
+    run, rs = imported_run(client, settings)
+    shots = sorted((rs.root / "screenshots").glob("*.png"))
+    newest = shots[0]
+    os.utime(newest, (time.time() + 60, time.time() + 60))
+    r = client.get(f"/api/runs/{run['id']}/thumbnail")
+    assert r.status_code == 200 and r.headers["content-type"] == "image/png"
+    assert r.content == newest.read_bytes()
+    for s in shots:
+        s.unlink()
+    assert client.get(f"/api/runs/{run['id']}/thumbnail").status_code == 404
