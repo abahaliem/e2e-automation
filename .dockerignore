@@ -1,0 +1,17 @@
+.git
+.venv
+.claude
+.superpowers
+.pytest_cache
+.pytest-tmp
+.env
+.env.server
+.qa-agent
+runs
+web/node_modules
+qa_agent/server/static/*
+**/__pycache__
+*.egg-info
+tests
+docs
+examples

@@ -2,6 +2,10 @@ import type {
   Account,
   ApkUpload,
   App,
+  AuthStatus,
+  AuthUser,
+  Role,
+  UserRow,
   AppInput,
   CaseDetailResponse,
   ControlInput,
@@ -11,8 +15,11 @@ import type {
   InstallResult,
   Profile,
   ProfileInput,
+  ReportSettings,
   ReviewInput,
   Run,
+  Skill,
+  SkillsResponse,
   RunInput,
   Snapshot,
   Stats,
@@ -30,13 +37,25 @@ export class ApiError extends Error {
   }
 }
 
+/** Event saat server meminta login ulang (mode server: sesi habis). */
+export const UNAUTHORIZED_EVENT = "qa:unauthorized";
+
 export async function request<T>(path: string, init: RequestInit & { json?: unknown } = {}): Promise<T> {
   const { json, headers, ...rest } = init;
   const res = await fetch(path, {
     ...rest,
-    headers: { ...(json !== undefined ? { "content-type": "application/json" } : {}), ...(headers ?? {}) },
+    credentials: "same-origin",
+    headers: {
+      // perlindungan CSRF sederhana: server menolak perubahan data tanpa header ini (mode server)
+      "X-QA-Agent": "1",
+      ...(json !== undefined ? { "content-type": "application/json" } : {}),
+      ...(headers ?? {}),
+    },
     body: json !== undefined ? JSON.stringify(json) : rest.body,
   });
+  if (res.status === 401 && !path.startsWith("/api/auth/") && typeof window !== "undefined") {
+    window.dispatchEvent(new Event(UNAUTHORIZED_EVENT));
+  }
   if (res.status === 204) return undefined as T;
   const text = await res.text();
   let data: unknown = undefined;
@@ -62,6 +81,18 @@ const patch = <T,>(path: string, json: unknown) => request<T>(path, { method: "P
 const del = (path: string) => request<void>(path, { method: "DELETE" });
 
 export const api = {
+  // login & pengguna (mode server)
+  authStatus: () => get<AuthStatus>("/api/auth/status"),
+  login: (username: string, password: string) => post<{ user: AuthUser }>("/api/auth/login", { username, password }),
+  logout: () => post<void>("/api/auth/logout"),
+  changePassword: (current: string, next: string) => post<void>("/api/auth/password", { current, new: next }),
+  listUsers: () => get<UserRow[]>("/api/users"),
+  createUser: (body: { username: string; password: string; role: Role }) => post<UserRow>("/api/users", body),
+  patchUser: (id: number, body: { role?: Role; active?: boolean; password?: string }) => patch<UserRow>(`/api/users/${id}`, body),
+  deleteUser: (id: number) => del(`/api/users/${id}`),
+  connectDevice: (body: { address: string; pair_address?: string; pair_code?: string }) =>
+    post<{ address: string; message: string }>("/api/devices/connect", body),
+
   // profil AI
   listProfiles: () => get<Profile[]>("/api/profiles"),
   createProfile: (body: ProfileInput) => post<Profile>("/api/profiles", body),
@@ -107,6 +138,31 @@ export const api = {
     patch<{ case: TestCase; warning: string | null }>(`/api/runs/${runId}/cases/${encodeURIComponent(tcId)}`, body),
   downloadUrl: (runId: number, kind: "xlsx" | "html" | "pdf") => `/api/runs/${runId}/download/${kind}`,
   fileUrl: (runId: number, path: string) => `/api/runs/${runId}/files/${path}`,
+
+  // skill QA
+  listSkills: () => get<SkillsResponse>("/api/skills"),
+  uploadSkill: (file: File) =>
+    request<Skill>(`/api/skills?filename=${encodeURIComponent(file.name)}`, {
+      method: "POST",
+      body: file,
+      headers: { "content-type": "application/octet-stream" },
+    }),
+  patchSkill: (id: number, body: Partial<Pick<Skill, "name" | "stages" | "app_ids" | "active">>) =>
+    patch<Skill>(`/api/skills/${id}`, body),
+  deleteSkill: (id: number) => del(`/api/skills/${id}`),
+  skillText: (id: number) => get<{ text: string }>(`/api/skills/${id}/text`),
+  previewSkills: (body: { app_id: number; module: string }) => post<{ cases: TestCase[] }>("/api/skills/preview", body),
+
+  // pengaturan laporan
+  reportSettings: () => get<ReportSettings>("/api/settings/report"),
+  patchReportSettings: (body: { company_name: string }) => patch<ReportSettings>("/api/settings/report", body),
+  uploadTemplate: (file: File) =>
+    request<ReportSettings>(`/api/settings/report/template?filename=${encodeURIComponent(file.name)}`, {
+      method: "POST",
+      body: file,
+      headers: { "content-type": "application/octet-stream" },
+    }),
+  deleteTemplate: () => del("/api/settings/report/template"),
 
   // perangkat Android
   listDevices: () => get<{ devices: Device[] }>("/api/devices"),

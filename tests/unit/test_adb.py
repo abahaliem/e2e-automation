@@ -172,3 +172,17 @@ def test_install_without_grant_and_uninstall():
     a2, _ = adb({"uninstall": (0, b"Failure [DELETE_FAILED_INTERNAL_ERROR]\n", b"")})
     with pytest.raises(AdbError, match="Gagal menghapus"):
         a2.uninstall("com.demo.app")
+
+
+def test_connect_and_pair():
+    a, r = adb({"connect 192.168.1.20:5555": (0, b"connected to 192.168.1.20:5555\n", b"")}, serial=None)
+    assert a.connect("192.168.1.20:5555") == "connected to 192.168.1.20:5555"
+    a, r = adb({"connect": (0, b"failed to connect to '10.0.0.9:5555': Connection refused\n", b"")}, serial=None)
+    with pytest.raises(AdbError, match="failed to connect"):
+        a.connect("10.0.0.9:5555")
+    a, r = adb({"pair": (0, b"Successfully paired to 10.0.0.9:37000\n", b"")}, serial=None)
+    a.pair("10.0.0.9:37000", "123456")
+    assert r.calls[-1][-3:] == ["pair", "10.0.0.9:37000", "123456"]
+    a, r = adb({"pair": (0, b"Failed: Wrong password or connection was dropped.\n", b"")}, serial=None)
+    with pytest.raises(AdbError):
+        a.pair("10.0.0.9:37000", "000000")

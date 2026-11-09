@@ -1,7 +1,8 @@
-import { AndroidLogo, ArrowsClockwise, DeviceMobile, DeviceMobileCamera, Warning } from "@phosphor-icons/react";
-import { useQuery } from "@tanstack/react-query";
+import { AndroidLogo, ArrowsClockwise, DeviceMobile, DeviceMobileCamera, PlugsConnected, Warning, WifiHigh } from "@phosphor-icons/react";
+import { useMutation, useQuery } from "@tanstack/react-query";
+import { useState, type FormEvent } from "react";
 import { Link } from "react-router-dom";
-import { Alert, Button, Card, PageHeader, Skeleton } from "@/components/ui";
+import { Alert, Button, Card, Field, Input, PageHeader, Skeleton } from "@/components/ui";
 import { ApiError, api } from "@/lib/api";
 import { cn } from "@/lib/cn";
 import type { Device } from "@/lib/types";
@@ -70,7 +71,72 @@ export function DevicesPage() {
           <UsbDebuggingSteps />
         </Card>
       )}
+      {!missing && <ConnectNetwork onConnected={() => devices.refetch()} />}
     </main>
+  );
+}
+
+/** HP lewat Wireless debugging (Android 11+) atau HP di jaringan server: `adb pair` (opsional) lalu `adb connect`. */
+export function ConnectNetwork({ onConnected }: { onConnected: () => void }) {
+  const [address, setAddress] = useState("");
+  const [pairing, setPairing] = useState(false);
+  const [pairAddress, setPairAddress] = useState("");
+  const [pairCode, setPairCode] = useState("");
+  const connect = useMutation({
+    mutationFn: () =>
+      api.connectDevice({
+        address: address.trim(),
+        ...(pairing && pairAddress.trim() && pairCode.trim() ? { pair_address: pairAddress.trim(), pair_code: pairCode.trim() } : {}),
+      }),
+    onSuccess: () => {
+      setPairCode("");
+      onConnected();
+    },
+  });
+  const submit = (e: FormEvent) => {
+    e.preventDefault();
+    if (address.trim()) connect.mutate();
+  };
+  return (
+    <Card className="max-w-3xl p-6">
+      <form onSubmit={submit} noValidate className="flex flex-col gap-4">
+        <div className="flex items-center gap-3">
+          <WifiHigh className="text-2xl text-accent" />
+          <div>
+            <h2 className="font-semibold">Sambungkan lewat jaringan</h2>
+            <p className="text-sm text-fg-muted">
+              Tanpa kabel: aktifkan Wireless debugging di HP, lalu isi IP:port yang tampil di layarnya. HP dan komputer ini
+              harus satu jaringan.
+            </p>
+          </div>
+        </div>
+        <Field label="Alamat HP (IP:port)" htmlFor="net-address">
+          <Input id="net-address" className="font-mono" placeholder="192.168.1.20:5555" value={address} onChange={(e) => setAddress(e.target.value)} />
+        </Field>
+        <label className="flex items-center gap-2 text-sm">
+          <input type="checkbox" checked={pairing} onChange={(e) => setPairing(e.target.checked)} className="h-4 w-4 accent-[var(--color-accent)]" />
+          Pertama kali? Pasangkan dulu dengan kode pairing (Android 11+)
+        </label>
+        {pairing && (
+          <div className="grid grid-cols-2 gap-4">
+            <Field label="Alamat pairing (IP:port)" htmlFor="net-pair-address" hint="Dari menu Pasangkan perangkat dengan kode">
+              <Input id="net-pair-address" className="font-mono" placeholder="192.168.1.20:37001" value={pairAddress} onChange={(e) => setPairAddress(e.target.value)} />
+            </Field>
+            <Field label="Kode pairing" htmlFor="net-pair-code">
+              <Input id="net-pair-code" inputMode="numeric" className="font-mono" placeholder="123456" value={pairCode} onChange={(e) => setPairCode(e.target.value)} />
+            </Field>
+          </div>
+        )}
+        {connect.error && <Alert tone="error">{(connect.error as Error).message}</Alert>}
+        {connect.data && <Alert tone="success">Tersambung: {connect.data.message}</Alert>}
+        <div>
+          <Button type="submit" variant="primary" disabled={connect.isPending || !address.trim()}>
+            <PlugsConnected />
+            {connect.isPending ? "Menyambungkan..." : "Sambungkan"}
+          </Button>
+        </div>
+      </form>
+    </Card>
   );
 }
 

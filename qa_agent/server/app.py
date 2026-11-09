@@ -104,13 +104,37 @@ def create_app(settings: ServerSettings, *, secrets: SecretStore | None = None,
     @app.exception_handler(SecretStoreUnavailable)
     async def _secrets_unavailable(request: Request, exc: SecretStoreUnavailable):
         return JSONResponse(status_code=503, content={
-            "detail": "Windows Credential Manager tidak bisa diakses, jadi API key dan password tidak bisa disimpan. "
+            "detail": "Penyimpanan rahasia (Windows Credential Manager / file terenkripsi server) tidak bisa diakses, "
+                      "jadi API key dan password tidak bisa disimpan. "
                       f"({exc})"})
 
-    from qa_agent.server import ws
-    from qa_agent.server.api import apps, devices, profiles, report_settings, results, runs, skills, stats
+    from qa_agent.server import auth as authz
 
-    for module in (apps, profiles, runs, results, stats, devices, report_settings, skills, ws):
+    app.state.login_limiter = authz.LoginLimiter()
+
+    @app.middleware("http")
+    async def _auth_guard(request: Request, call_next):
+        path = request.url.path
+        if not settings.auth_required or not path.startswith("/api/") or path.startswith(("/api/docs", "/api/openapi")):
+            return await call_next(request)
+        if request.method in authz.WRITE_METHODS and request.headers.get(authz.CSRF_HEADER) != "1":
+            return JSONResponse(status_code=403, content={
+                "detail": f"Permintaan ditolak: header {authz.CSRF_HEADER} wajib ada untuk mengubah data"})
+        if path in authz.PUBLIC_PATHS:
+            return await call_next(request)
+        user = app.state.store.session_user(request.cookies.get(authz.COOKIE))
+        if user is None:
+            return JSONResponse(status_code=401, content={"detail": "Silakan masuk dulu"})
+        message = authz.permission_error(user.role, request.method, path)
+        if message:
+            return JSONResponse(status_code=403, content={"detail": message})
+        request.state.user = user
+        return await call_next(request)
+
+    from qa_agent.server import ws
+    from qa_agent.server.api import apps, auth, devices, profiles, report_settings, results, runs, skills, stats
+
+    for module in (auth, apps, profiles, runs, results, stats, devices, report_settings, skills, ws):
         app.include_router(module.router)
 
     @app.api_route("/api/{rest:path}", methods=["GET", "POST", "PATCH", "DELETE", "PUT"], include_in_schema=False)

@@ -71,6 +71,15 @@ Catatan:
 - Mode production di Android hanya memblok aksi berisiko berdasarkan nama tombol. Request jaringan aplikasi tidak bisa dicegat, jadi tetap pakai akun dan data uji.
 - Keterbatasan: mengetik huruf non-ASCII (mis. é) belum didukung, menyalakan emulator dari dashboard belum ada, dan WebView diuji seadanya.
 
+## Server tim (login & peran)
+
+Untuk dipakai bersama tim, jalankan QA Agent di server dengan Docker + HTTPS. Langkah lengkapnya ada di [docs/deploy.md](docs/deploy.md). Ringkasnya:
+
+- **Login wajib** di mode server. Ada tiga peran: Admin, QA, dan Viewer.
+- **Admin pertama** dibuat dengan `qa-agent user add <nama> --role admin`. Pengguna berikutnya dikelola Admin dari **Pengaturan > Keamanan**.
+- **Rahasia** (API key AI, password akun test) disimpan terenkripsi dengan kunci induk `QA_AGENT_MASTER_KEY` (`qa-agent secret-key`).
+- **HP Android** bisa dicolok USB ke server, atau disambungkan lewat **Perangkat > Sambungkan lewat jaringan** (Wireless debugging).
+
 ## Alur kerja CLI
 
 1. **Petakan aplikasi:** `qa-agent explore`

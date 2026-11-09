@@ -1,0 +1,16 @@
+# HTTPS otomatis. Domain publik → sertifikat Let's Encrypt.
+# Domain internal kantor (mis. qa-agent.local) → hapus komentar "tls internal" di bawah.
+{$QA_AGENT_DOMAIN} {
+	# tls internal
+	encode gzip
+	request_body {
+		max_size 320MB
+	}
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "same-origin"
+		X-Frame-Options "DENY"
+	}
+	reverse_proxy qa-agent:8787
+}

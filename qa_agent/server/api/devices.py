@@ -6,6 +6,7 @@ import time
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse, Response
+from pydantic import BaseModel, Field
 
 from qa_agent.drivers.adb import AdbError, AdbNotFound
 from qa_agent.server.api import deps
@@ -44,6 +45,46 @@ def list_devices(request: Request):
         out.append({"serial": d.serial, "state": d.state, "model": d.model, "emulator": d.emulator,
                     "android_version": version})
     return {"devices": out}
+
+
+_HOST = r"[A-Za-z0-9.-]{1,253}|\[[0-9A-Fa-f:]+\]"
+_ADDRESS = re.compile(rf"^(?:{_HOST})(?::\d{{1,5}})?$")
+
+
+class ConnectIn(BaseModel):
+    address: str = Field(max_length=270)
+    pair_address: str | None = Field(default=None, max_length=270)
+    pair_code: str | None = Field(default=None, max_length=12)
+
+
+@router.post("/devices/connect")
+def connect_device(body: ConnectIn, request: Request):
+    """Sambungkan HP lewat jaringan (Wireless debugging / HP di server): opsional `adb pair`, lalu `adb connect`."""
+    address = body.address.strip()
+    pair_address = (body.pair_address or "").strip()
+    code = (body.pair_code or "").strip()
+    for field, value in (("address", address), ("pair_address", pair_address)):
+        if value and not _ADDRESS.match(value):
+            return JSONResponse(status_code=422, content={"detail": "Alamat harus berbentuk IP:port, mis. 192.168.1.20:5555",
+                                                          "field_errors": {field: "Format IP:port tidak valid"}})
+    if not address:
+        return JSONResponse(status_code=422, content={"detail": "Isi alamat IP:port HP",
+                                                      "field_errors": {"address": "Wajib diisi"}})
+    if code and not code.isdigit():
+        return JSONResponse(status_code=422, content={"detail": "Kode pairing berupa angka",
+                                                      "field_errors": {"pair_code": "Kode pairing berupa angka"}})
+    if ":" not in address.rsplit("]", 1)[-1]:
+        address += ":5555"
+    adb = _adb(request)
+    try:
+        if pair_address and code:
+            adb.pair(pair_address, code)
+        message = adb.connect(address)
+    except AdbNotFound:
+        return _missing()
+    except AdbError as e:
+        raise HTTPException(status_code=409, detail=f"Gagal tersambung: {e}")
+    return {"address": address, "message": message}
 
 
 @router.get("/devices/{serial}/packages")

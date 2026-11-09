@@ -5,10 +5,12 @@ import {
   GearSix,
   PlayCircle,
   Scan,
+  SignOut,
   SquaresFour,
   type Icon,
 } from "@phosphor-icons/react";
 import { Link, Outlet, useLocation } from "react-router-dom";
+import { ROLE_LABEL, useAuth } from "@/lib/auth";
 import { cn } from "@/lib/cn";
 
 export type ShellProfile = { name: string; model: string; ok: boolean | null } | null;
@@ -33,6 +35,27 @@ export function Logo() {
   return (
     <div className="grid h-8 w-8 place-items-center rounded-lg bg-accent">
       <Scan weight="bold" className="text-lg text-white" />
+    </div>
+  );
+}
+
+/** Mode server: nama pengguna, peran, dan tombol Keluar. Mode lokal: tidak tampil. */
+function UserBox() {
+  const { status, logout } = useAuth();
+  const user = status.user;
+  if (!status.auth_required || !user) return <div className="mt-auto" />;
+  return (
+    <div className="mx-3 mt-auto flex items-center gap-2.5 rounded-lg px-2 py-2 text-sm">
+      <div className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-accent-soft font-medium text-accent">
+        {user.username.slice(0, 1).toUpperCase()}
+      </div>
+      <div className="min-w-0 flex-1">
+        <div className="truncate font-medium">{user.username}</div>
+        <div className="text-xs text-fg-muted">{ROLE_LABEL[user.role]}</div>
+      </div>
+      <button type="button" onClick={logout} title="Keluar" aria-label="Keluar" className="rounded-md p-1.5 text-fg-muted hover:bg-ink-850 hover:text-fg">
+        <SignOut className="text-lg" />
+      </button>
     </div>
   );
 }
@@ -82,7 +105,8 @@ export function AppShell({ profile }: { profile: ShellProfile }) {
             );
           })}
         </nav>
-        <div className="m-3 mt-auto rounded-lg border border-ink-700 p-3 text-xs">
+        <UserBox />
+        <div className="m-3 mt-2 rounded-lg border border-ink-700 p-3 text-xs">
           {profile ? (
             <>
               <div className="flex items-center gap-2 text-fg">

@@ -337,25 +337,130 @@ def serve(
     port: int = typer.Option(8787, "--port", help="Port awal; port kosong berikutnya dipakai bila terpakai"),
     no_browser: bool = typer.Option(False, "--no-browser", help="Jangan buka browser otomatis"),
     max_parallel: int = typer.Option(2, "--max-parallel", min=1, max=8, help="Maksimal run berjalan bersamaan"),
+    host: str = typer.Option("127.0.0.1", "--host", help="Alamat; selain 127.0.0.1 wajib --auth (mode server)"),
+    auth: bool = typer.Option(False, "--auth", envvar="QA_AGENT_AUTH", help="Mode server: wajib login"),
+    secure_cookies: bool = typer.Option(False, "--secure-cookies", envvar="QA_AGENT_SECURE_COOKIES",
+                                        help="Cookie sesi hanya lewat HTTPS (di belakang reverse proxy)"),
+    secrets_backend: str = typer.Option("keyring", "--secrets", envvar="QA_AGENT_SECRET_BACKEND",
+                                        help="keyring (Windows Credential Manager) | file (server, butuh QA_AGENT_MASTER_KEY)"),
 ) -> None:
-    """Jalankan dashboard web di http://127.0.0.1 (hanya bisa diakses dari laptop ini)."""
+    """Jalankan dashboard web. Default http://127.0.0.1 (hanya laptop ini); mode server dengan --host & --auth."""
+    if host not in ("127.0.0.1", "localhost", "::1") and not auth:
+        _fail(f"Alamat {host} bisa diakses komputer lain. Tambahkan --auth supaya pengguna wajib login.")
     typer.echo("Menyiapkan dashboard QA Agent...")
     import uvicorn
 
     from qa_agent.server.app import create_app
+    from qa_agent.server.secrets import SecretStoreUnavailable, secret_store_for
     from qa_agent.server.settings import ServerSettings, default_data_dir
 
-    host = "127.0.0.1"
     settings = ServerSettings(data_dir=(data_dir or default_data_dir()).resolve(), host=host,
-                              port=find_free_port(port, host), max_parallel=max_parallel)
+                              port=find_free_port(port, host), max_parallel=max_parallel,
+                              auth_required=auth, secure_cookies=secure_cookies)
     settings.ensure_dirs()
-    url = f"http://{host}:{settings.port}"
-    typer.echo(f"Dashboard QA Agent: {url}")
+    try:
+        secrets = secret_store_for(secrets_backend, settings.data_dir)
+    except SecretStoreUnavailable as e:
+        _fail(str(e))
+    if auth:
+        from qa_agent.server.store import Store
+
+        store = Store(settings.db_path)
+        no_admin = store.count_active_admins() == 0
+        store.close()
+        if no_admin:
+            typer.echo("[PERINGATAN] Belum ada Admin. Buat dulu: qa-agent user add <nama> --role admin")
+    shown = "127.0.0.1" if host in ("0.0.0.0", "::") else host
+    url = f"http://{shown}:{settings.port}"
+    typer.echo(f"Dashboard QA Agent: {url}" + ("  (mode server, wajib login)" if auth else ""))
     typer.echo(f"Folder data       : {settings.data_dir}")
     typer.echo("Tekan Ctrl+C untuk berhenti.")
     if not no_browser:
         _open_browser_later(url)
-    uvicorn.run(create_app(settings), host=host, port=settings.port, log_level="warning")
+    uvicorn.run(create_app(settings, secrets=secrets), host=host, port=settings.port, log_level="warning",
+                proxy_headers=True, forwarded_allow_ips="127.0.0.1")
+
+
+user_app = typer.Typer(help="Kelola pengguna mode server (login dashboard).", no_args_is_help=True)
+app.add_typer(user_app, name="user")
+DATA_DIR_OPTION = typer.Option(None, "--data-dir", help="Folder data (default: %USERPROFILE%\\QA Agent)")
+
+
+def _user_store(data_dir: Path | None):
+    from qa_agent.server.settings import ServerSettings, default_data_dir
+    from qa_agent.server.store import Store
+
+    settings = ServerSettings(data_dir=(data_dir or default_data_dir()).resolve())
+    settings.ensure_dirs()
+    return Store(settings.db_path)
+
+
+def _ask_password() -> str:
+    from qa_agent.server.auth import MIN_PASSWORD
+
+    password = typer.prompt("Password", hide_input=True, confirmation_prompt=True)
+    if len(password) < MIN_PASSWORD:
+        _fail(f"Password minimal {MIN_PASSWORD} karakter")
+    return password
+
+
+@user_app.command("add")
+def user_add(username: str, role: str = typer.Option("qa", "--role", help="admin | qa | viewer"),
+             data_dir: Optional[Path] = DATA_DIR_OPTION) -> None:
+    """Tambah pengguna (password diminta tanpa ditampilkan)."""
+    from qa_agent.server.auth import ROLES, hash_password
+
+    if role not in ROLES:
+        _fail(f"Peran harus salah satu dari: {', '.join(ROLES)}")
+    password = _ask_password()
+    store = _user_store(data_dir)
+    try:
+        store.create_user(username=username, password_hash=hash_password(password), role=role)
+    except ValueError as e:
+        _fail(str(e))
+    finally:
+        store.close()
+    typer.echo(f"[OK] Pengguna '{username}' ({role}) dibuat")
+
+
+@user_app.command("list")
+def user_list(data_dir: Optional[Path] = DATA_DIR_OPTION) -> None:
+    """Daftar pengguna."""
+    from qa_agent.server.auth import ROLE_LABEL
+
+    store = _user_store(data_dir)
+    try:
+        for u in store.list_users():
+            typer.echo(f"{u.id:>3}  {u.username:<24} {ROLE_LABEL.get(u.role, u.role):<8} {'aktif' if u.active else 'nonaktif'}")
+    finally:
+        store.close()
+
+
+@user_app.command("passwd")
+def user_passwd(username: str, data_dir: Optional[Path] = DATA_DIR_OPTION) -> None:
+    """Atur ulang password pengguna (mis. Admin lupa password)."""
+    from qa_agent.server.auth import hash_password
+
+    store = _user_store(data_dir)
+    try:
+        user = store.get_user_by_name(username)
+        if user is None:
+            _fail(f"Pengguna '{username}' tidak ditemukan")
+        password = _ask_password()
+        store.update_user(user.id, password_hash=hash_password(password))
+        store.delete_user_sessions(user.id)
+    finally:
+        store.close()
+    typer.echo(f"[OK] Password '{username}' diganti")
+
+
+@app.command("secret-key")
+def secret_key() -> None:
+    """Buat kunci induk untuk QA_AGENT_MASTER_KEY (penyimpanan rahasia mode server)."""
+    from qa_agent.server.secrets import generate_master_key
+
+    typer.echo("Simpan kunci ini di QA_AGENT_MASTER_KEY (mis. file .env server). Jangan di-commit:")
+    typer.echo(generate_master_key())
 
 
 @app.command()

@@ -1,11 +1,12 @@
 import { screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { ApiError, api } from "@/lib/api";
 import { renderWithProviders } from "@/test/render";
 import { DevicesPage } from "./Devices";
 
 vi.mock("@/lib/api", async (orig) => {
   const mod = await orig<typeof import("@/lib/api")>();
-  return { ...mod, api: { ...mod.api, listDevices: vi.fn(), devicePackages: vi.fn() } };
+  return { ...mod, api: { ...mod.api, listDevices: vi.fn(), devicePackages: vi.fn(), connectDevice: vi.fn() } };
 });
 const mocked = vi.mocked(api);
 
@@ -32,6 +33,22 @@ describe("Halaman Perangkat", () => {
     renderWithProviders(<DevicesPage />);
     expect(await screen.findByText("Belum ada HP yang tersambung")).toBeInTheDocument();
     expect(screen.getByText(/Opsi pengembang/)).toBeInTheDocument();
+  });
+
+  it("sambungkan HP lewat jaringan dengan kode pairing", async () => {
+    mocked.listDevices.mockResolvedValue({ devices: [] });
+    mocked.connectDevice.mockResolvedValue({ address: "192.168.1.20:5555", message: "connected to 192.168.1.20:5555" });
+    renderWithProviders(<DevicesPage />);
+    const user = userEvent.setup();
+    await user.type(await screen.findByLabelText("Alamat HP (IP:port)"), "192.168.1.20:5555");
+    await user.click(screen.getByLabelText(/Pasangkan dulu dengan kode pairing/));
+    await user.type(screen.getByLabelText("Alamat pairing (IP:port)"), "192.168.1.20:37001");
+    await user.type(screen.getByLabelText("Kode pairing"), "123456");
+    await user.click(screen.getByRole("button", { name: "Sambungkan" }));
+    expect(mocked.connectDevice).toHaveBeenCalledWith({
+      address: "192.168.1.20:5555", pair_address: "192.168.1.20:37001", pair_code: "123456",
+    });
+    expect(await screen.findByText(/Tersambung: connected to 192.168.1.20:5555/)).toBeInTheDocument();
   });
 
   it("adb belum terpasang", async () => {

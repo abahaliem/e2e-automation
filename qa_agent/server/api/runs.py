@@ -46,6 +46,7 @@ def run_out(request: Request, row: RunRow) -> dict:
     data["url"] = app.url if app else ""
     data["confirm_each_step"] = bool(row.options.get("confirm_each_step"))
     data["device_serial"] = row.options.get("device_serial")
+    data["created_by"] = row.options.get("created_by")
     data["active"] = manager.is_active(row.id)
     data["control_state"] = manager.control(row.id).state if data["active"] else None
     profile = store.get_profile(row.profile_id) if row.profile_id else None
@@ -61,7 +62,8 @@ def list_runs(request: Request, status: str | None = None, app_id: int | None = 
 
 @router.post("/runs", status_code=201)
 def create_run(body: RunIn, request: Request) -> dict:
-    row = deps.manager(request).submit(RunRequest(**body.model_dump()))
+    user = getattr(request.state, "user", None)
+    row = deps.manager(request).submit(RunRequest(**body.model_dump(), created_by=user.username if user else None))
     return run_out(request, row)
 
 

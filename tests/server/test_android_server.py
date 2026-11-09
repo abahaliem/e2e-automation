@@ -222,3 +222,32 @@ def test_run_rejects_unknown_apk_file(ctx):
     r = client.post("/api/runs", json={"app_id": app["id"], "mode": "explore", "device_serial": "R58M123",
                                        "apk_file": "../../qa-agent.db"})
     assert r.status_code == 422 and "APK" in r.json()["detail"]
+
+
+def test_connect_over_network(ctx):
+    client, state, *_ = ctx
+    calls = []
+
+    def connect(self, address):
+        calls.append(("connect", address))
+        if address.startswith("10."):
+            raise AdbError("failed to connect to '10.0.0.9:5555'")
+        return f"connected to {address}"
+
+    def pair(self, address, code):
+        calls.append(("pair", address, code))
+
+    DeviceAdb.connect, DeviceAdb.pair = connect, pair
+    try:
+        r = client.post("/api/devices/connect", json={"address": "192.168.1.20:5555"})
+        assert r.status_code == 200 and r.json()["message"] == "connected to 192.168.1.20:5555"
+        r = client.post("/api/devices/connect", json={"address": "192.168.1.20", "pair_address": "192.168.1.20:37001",
+                                                      "pair_code": "123456"})
+        assert r.status_code == 200
+        assert calls[-2:] == [("pair", "192.168.1.20:37001", "123456"), ("connect", "192.168.1.20:5555")]
+        r = client.post("/api/devices/connect", json={"address": "10.0.0.9:5555"})
+        assert r.status_code == 409 and "failed" in r.json()["detail"]
+        r = client.post("/api/devices/connect", json={"address": "bukan alamat; rm -rf"})
+        assert r.status_code == 422
+    finally:
+        del DeviceAdb.connect, DeviceAdb.pair
