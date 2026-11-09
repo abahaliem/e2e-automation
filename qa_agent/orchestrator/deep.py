@@ -184,8 +184,14 @@ _NEGATIVE_CREDENTIAL = re.compile(
 _CREDENTIAL_WORDS = re.compile(r"password|kata sandi|username|user ?name|kredensial|sign ?in|log ?in|masuk", re.IGNORECASE)
 
 
-def goal_for(tc: QaTestCase) -> str:
+def goal_for(tc: QaTestCase, start_problem: str = "") -> str:
     steps = "\n".join(f"{i}. {s}" for i, s in enumerate(tc.steps, 1)) or "-"
+    if start_problem:
+        start_problem = (
+            f"\nCATATAN SISTEM: layar awal test case ini ({tc.page or tc.start_url}) tidak bisa dibuka otomatis: "
+            f"{start_problem}\nMulai dari layar yang tampil sekarang dan cari cara mencapai layar awal itu; utamakan "
+            "arahan QA bila ada. Jika layar itu memang tidak bisa dimunculkan saat ini, nyatakan blocked dengan alasan "
+            "yang jelas.\n")
     text = " ".join([tc.title, tc.test_data, *tc.steps])
     negative = _NEGATIVE_CREDENTIAL.search(text)
     reminder = ("\nPENTING: ini skenario kredensial salah. {{password}} dan {{username}} adalah kredensial yang BENAR, "
@@ -196,7 +202,7 @@ def goal_for(tc: QaTestCase) -> str:
                      "Abaikan contoh username/password di test data bila itu untuk akun yang valid (contoh itu karangan, "
                      "bukan akun sungguhan).\n")
     return (
-        f"Jalankan test case {tc.id}: {tc.title}\n{reminder}"
+        f"Jalankan test case {tc.id}: {tc.title}\n{reminder}{start_problem}"
         f"Tipe: {tc.type}\n"
         f"Pre-condition: {tc.precondition or '-'}\n"
         f"Test data: {tc.test_data or '-'}\n"
@@ -242,6 +248,7 @@ class DeepRunner:
         self.control = control
         self._logout_steps: list[dict] | None = None  # jalur logout yang berhasil, diputar ulang tanpa AI
         self._logouts = 0
+        self._unreachable: dict[str, tuple[str, str]] = {}  # layar awal → (TC pertama yang gagal, alasan)
 
     def _emit(self, event: dict) -> None:
         try:
@@ -269,15 +276,36 @@ class DeepRunner:
             self._emit({"type": "tc.started", "tc_id": tc.id, "title": tc.title})
             try:
                 self.loop.last_signals = []
-                self._prepare(tc, needs_auth)
+                start = tc.start_url or "/"
+                start_problem = ""
+                try:
+                    self._prepare(tc, needs_auth)
+                except RuntimeError as e:
+                    # Layar awal tidak bisa dibuka otomatis: biarkan agent mencoba dari layar saat ini (arahan QA
+                    # ikut dibaca). Layar yang sama sudah terbukti tidak bisa dicapai → langsung Blocked, kecuali
+                    # QA sedang memberi arahan.
+                    earlier = self._unreachable.get(start)
+                    hints_waiting = self.control is not None and self.control.has_hints()
+                    if earlier and not hints_waiting:
+                        tc.status_ai = "Blocked"
+                        tc.actual = f"Layar awal sama dengan {earlier[0]} yang tidak bisa dicapai: {earlier[1]}"
+                        tc.ai_note = "Beri arahan agent (Arahkan agent) atau jalankan ulang saat layar ini bisa dimunculkan"
+                        self.store.write_testcases(cases)
+                        self._emit({"type": "tc.finished", "tc_id": tc.id, "status": tc.status_ai})
+                        continue
+                    start_problem = str(e)
                 # Error yang muncul saat login/logout otomatis (mis. popup setelah login) tidak boleh hilang
                 prep_errors = [s.message for s in getattr(self.loop, "last_signals", [])
                                if s.kind in ("ui_error", "page_error", "console_error")
                                or (s.kind == "http_error" and (s.status or 0) >= 500)]
-                outcome = self.loop.run(tc.id, goal_for(tc), allow_logout=is_logout_case(tc))
+                outcome = self.loop.run(tc.id, goal_for(tc, start_problem), allow_logout=is_logout_case(tc))
                 if outcome.error_kind == "interrupted":
                     self._emit({"type": "tc.finished", "tc_id": tc.id, "status": None})
                     break  # biarkan status kosong supaya dijalankan ulang saat resume
+                if start_problem and outcome.final == "blocked":
+                    self._unreachable[start] = (tc.id, outcome.reason or start_problem)
+                elif start_problem:
+                    self._unreachable.pop(start, None)
                 tc.status_ai, tc.severity = judge(outcome, tc)
                 tc.actual = outcome.actual or outcome.reason
                 tc.ai_note = outcome.reason if outcome.final == "blocked" else ""
