@@ -217,7 +217,8 @@ def _execute(rt: Runtime, meta: RunMeta, app_map: AppMap, cases: list[QaTestCase
     typer.echo(f"Menjalankan {sum(1 for c in cases if c.status_ai is None)} test case...")
     meta.status = "running"
     rt.store.write_meta(meta)
-    status = _run_guarded(rt, meta, lambda: make_runner(rt).execute(cases, needs_auth=needs_auth))
+    status = _run_guarded(rt, meta, lambda: make_runner(rt).execute(
+        cases, needs_auth=needs_auth, public_starts={s.url for s in app_map.screens if s.public}))
     counts = {s: sum(1 for c in cases if c.status_ai == s) for s in STATUSES}
     typer.echo("Hasil: " + ", ".join(f"{s} {n}" for s, n in counts.items() if n))
     if status == "paused":

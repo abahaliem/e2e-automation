@@ -98,6 +98,7 @@ class AgentLoop:
         self.should_stop = should_stop
         self.control = control
         self.on_event = on_event
+        self.last_signals: list[Signal] = []
 
     # ------------------------------------------------------------------
     def _emit(self, event: dict) -> None:
@@ -108,7 +109,9 @@ class AgentLoop:
 
     def run(self, tc_id: str, goal: str, *, allow_logout: bool = False, login: bool = False) -> LoopOutcome:
         try:
-            return self._run(tc_id, goal, allow_logout=allow_logout, login=login)
+            result = self._run(tc_id, goal, allow_logout=allow_logout, login=login)
+            self.last_signals = list(result.signals)  # dibaca DeepRunner untuk login/logout otomatis
+            return result
         finally:
             if self.control is not None:  # perintah khusus test case ini tidak terbawa ke test case berikutnya
                 self.control.reset_case()

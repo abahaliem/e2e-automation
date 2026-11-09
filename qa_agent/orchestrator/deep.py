@@ -161,10 +161,18 @@ def judge(outcome: LoopOutcome, tc: QaTestCase) -> tuple[str, str | None]:
     return "Pass", None
 
 
+_NEGATIVE_CREDENTIAL = re.compile(
+    r"(password|kata sandi|username|user ?name|kredensial|akun)\s+(salah|tidak valid|invalid|tidak terdaftar|keliru)"
+    r"|wrong password|invalid credential|tidak terdaftar", re.IGNORECASE)
+
+
 def goal_for(tc: QaTestCase) -> str:
     steps = "\n".join(f"{i}. {s}" for i, s in enumerate(tc.steps, 1)) or "-"
+    negative = _NEGATIVE_CREDENTIAL.search(" ".join([tc.title, tc.test_data, *tc.steps]))
+    reminder = ("\nPENTING: ini skenario kredensial salah. {{password}} dan {{username}} adalah kredensial yang BENAR, "
+                "jadi untuk nilai yang harus salah ketik teks literal (mis. Salah#12345 / tidakterdaftar_qa).\n") if negative else ""
     return (
-        f"Jalankan test case {tc.id}: {tc.title}\n"
+        f"Jalankan test case {tc.id}: {tc.title}\n{reminder}"
         f"Tipe: {tc.type}\n"
         f"Pre-condition: {tc.precondition or '-'}\n"
         f"Test data: {tc.test_data or '-'}\n"
@@ -217,9 +225,15 @@ class DeepRunner:
         except Exception:
             pass
 
-    def execute(self, cases: list[QaTestCase], *, needs_auth: bool) -> list[QaTestCase]:
-        self.loop.relogin = self.auth.relogin if (needs_auth and self.auth is not None) else None
+    def execute(self, cases: list[QaTestCase], *, needs_auth: bool,
+                public_starts: set[str] | frozenset[str] = frozenset()) -> list[QaTestCase]:
+        """`public_starts`: layar sebelum login (mis. Sign In). Test case yang dimulai di sana selalu tanpa sesi login."""
+        self._public_starts = set(public_starts)
+        relogin = self.auth.relogin if (needs_auth and self.auth is not None) else None
+        self.loop.relogin = relogin
         for tc in cases:
+            # Test case di layar publik (Sign In) menguji form login: jangan login ulang otomatis saat form login tampil
+            self.loop.relogin = None if (tc.start_url or "/") in self._public_starts else relogin
             if tc.status_ai is not None:
                 continue  # sudah selesai (resume)
             if self.should_stop():
@@ -230,7 +244,12 @@ class DeepRunner:
             self.store.drop_steps(tc.id)
             self._emit({"type": "tc.started", "tc_id": tc.id, "title": tc.title})
             try:
+                self.loop.last_signals = []
                 self._prepare(tc, needs_auth)
+                # Error yang muncul saat login/logout otomatis (mis. popup setelah login) tidak boleh hilang
+                prep_errors = [s.message for s in getattr(self.loop, "last_signals", [])
+                               if s.kind in ("ui_error", "page_error", "console_error")
+                               or (s.kind == "http_error" and (s.status or 0) >= 500)]
                 outcome = self.loop.run(tc.id, goal_for(tc), allow_logout=is_logout_case(tc))
                 if outcome.error_kind == "interrupted":
                     self._emit({"type": "tc.finished", "tc_id": tc.id, "status": None})
@@ -238,6 +257,11 @@ class DeepRunner:
                 tc.status_ai, tc.severity = judge(outcome, tc)
                 tc.actual = outcome.actual or outcome.reason
                 tc.ai_note = outcome.reason if outcome.final == "blocked" else ""
+                if prep_errors:
+                    note = "Saat login/logout otomatis sebelum test case ini muncul: " + "; ".join(dict.fromkeys(prep_errors))
+                    tc.ai_note = f"{tc.ai_note} {note}".strip()
+                    if tc.status_ai == "Pass":
+                        tc.status_ai = "Perlu Review"
             except _Interrupted:
                 self._emit({"type": "tc.finished", "tc_id": tc.id, "status": None})
                 break
@@ -255,7 +279,9 @@ class DeepRunner:
 
     def _prepare(self, tc: QaTestCase, needs_auth: bool) -> None:
         start = tc.start_url or "/"
-        if (needs_auth or requires_login(tc) or is_logout_case(tc)) and self.auth is not None:
+        public_start = start in getattr(self, "_public_starts", set())
+        logged_in = requires_login(tc) or is_logout_case(tc) or (needs_auth and not public_start)
+        if logged_in and self.auth is not None:
             self.auth.start_authenticated(start)
         else:
             self.driver.new_session(None)

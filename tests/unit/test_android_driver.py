@@ -279,3 +279,30 @@ def test_live_frames_use_parallel_capture():
     time.sleep(0.5)
     d.set_streaming(False)
     assert len(frames) >= 3 and d.frame_workers >= 2
+
+def test_transient_error_popup_after_tap_is_reported():
+    """Popup/snackbar error yang muncul sesaat setelah tap lalu hilang tetap tercatat sebagai sinyal."""
+    popup = hierarchy(
+        node("android.widget.TextView", text="Beranda", bounds="[0,100][1080,200]", clickable=False),
+        node("android.widget.TextView", text="Terjadi kesalahan: gagal memuat order", bounds="[0,2000][1080,2100]", clickable=False),
+    )
+    adb = FakeAdb({"LOGIN": LOGIN_XML, "POPUP": popup, "HOME": HOME_XML}, "LOGIN", {MASUK: "POPUP"})
+    d = AndroidDriver(adb, "com.demo.app", sleep=lambda s: None)
+    d.start()
+    d.new_session(None)
+    original = adb.dump_ui
+    seen = {"n": 0}
+
+    def dump():
+        if adb.current == "POPUP":
+            seen["n"] += 1
+            if seen["n"] > 1:
+                adb.current = "HOME"  # popup hilang sendiri
+        return original()
+
+    adb.dump_ui = dump
+    obs = d.observe()
+    d.execute(Action(action="click", element=4), find(obs, "MASUK"))
+    after = d.observe()
+    assert any(s.kind == "ui_error" and "gagal memuat order" in s.message for s in after.signals)
+    assert not any("gagal memuat order" in s.message for s in d.observe().signals)  # dilaporkan sekali

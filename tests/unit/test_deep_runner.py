@@ -221,3 +221,45 @@ def test_case_with_logged_in_precondition_uses_auth(tmp_path):
     runner, loop, _, _, auth = make(tmp_path, {"TC-PEN-001": PASS})
     runner.execute([tc(1, precondition="User sudah login sebagai admin")], needs_auth=False)
     assert auth.started == [url("home")]
+
+def test_case_starting_on_public_screen_runs_logged_out_even_if_module_needs_auth(tmp_path):
+    """Modul Autentikasi berisi Sign In (publik) dan Form Reason (perlu login)."""
+    runner, loop, _, driver, auth = make(tmp_path, {"TC-PEN-001": PASS, "TC-PEN-002": PASS})
+    signin = tc(1)
+    form = tc(2)
+    form.start_url = url("users")
+    driver.screens[url("users")] = HOME.model_copy(update={"location": url("users")})
+    runner.execute([signin, form], needs_auth=True, public_starts={url("home")})
+    assert driver.sessions == [None]  # Sign In: sesi bersih, tanpa login
+    assert auth.started == [url("users")]  # Form Reason: login dulu
+
+def test_public_start_case_disables_auto_relogin(tmp_path):
+    runner, loop, _, _, auth = make(tmp_path, {"TC-PEN-001": PASS})
+    seen = []
+    original = loop.run
+    loop.run = lambda tc_id, goal, **kw: (seen.append(loop.relogin), original(tc_id, goal, **kw))[1]
+    runner.execute([tc(1)], needs_auth=True, public_starts={url("home")})
+    assert seen == [None]
+
+def test_negative_credential_goal_warns_against_real_password():
+    from qa_agent.orchestrator.deep import goal_for
+
+    wrong = QaTestCase(id="TC-AUT-002", module="Autentikasi", title="Sign In gagal dengan password salah", expected="ditolak")
+    assert "kredensial yang BENAR" in goal_for(wrong)
+    ok = QaTestCase(id="TC-AUT-001", module="Autentikasi", title="Sign In sukses dengan kredensial valid", expected="masuk")
+    assert "kredensial yang BENAR" not in goal_for(ok)
+
+def test_error_during_auto_login_becomes_finding(tmp_path):
+    """Popup error saat login otomatis (persiapan) tidak dibuang: test case jadi Perlu Review dengan catatan."""
+    runner, loop, _, _, auth = make(tmp_path, {"TC-PEN-001": PASS})
+    sig = Signal(kind="ui_error", message="Pesan muncul sesaat lalu hilang: Terjadi kesalahan server")
+    original = auth.start_authenticated
+
+    def start(target):
+        loop.last_signals = [sig]  # sinyal dari loop LOGIN
+        original(target)
+
+    auth.start_authenticated = start
+    cases = runner.execute([tc(1)], needs_auth=True)
+    assert cases[0].status_ai == "Perlu Review"
+    assert "Terjadi kesalahan server" in cases[0].ai_note and "login/logout otomatis" in cases[0].ai_note

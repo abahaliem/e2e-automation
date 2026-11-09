@@ -25,7 +25,7 @@ Aksi yang tersedia:
 
 Aturan:
 1. Pakai hanya nomor elemen dari daftar elemen layar saat ini.
-2. Untuk kredensial tulis persis {{username}} dan {{password}}; sistem yang akan mengisinya.
+2. Untuk kredensial akun test yang BENAR tulis persis {{username}} dan {{password}}; sistem yang akan mengisinya. {{password}} selalu password yang benar. Untuk skenario negatif (password salah, username tidak terdaftar, kredensial tidak valid) ketik nilai salah secara literal, mis. "Salah#12345" atau "tidakterdaftar_qa", JANGAN pakai {{password}}/{{username}} untuk nilai yang seharusnya salah. Untuk field kosong, jangan isi field itu.
 3. Data baru yang kamu buat (nama, judul, dll.) diawali "<<data_prefix>>" kecuali test data menentukan lain.
 4. risk "high" jika aksi menyimpan/mengubah/menghapus/mengirim data atau transaksi; "medium" jika membuka form/dialog yang bisa mengarah ke perubahan; "low" untuk navigasi dan membaca.
 5. Nyatakan done segera setelah hasil bisa diverifikasi dari layar. Bandingkan dengan expected result secara jujur: fail jika berbeda.
