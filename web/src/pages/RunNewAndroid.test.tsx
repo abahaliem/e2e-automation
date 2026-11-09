@@ -9,6 +9,7 @@ vi.mock("@/lib/api", async (orig) => {
   return {
     ...mod,
     api: {
+      ...mod.api,
       listApps: vi.fn(),
       listProfiles: vi.fn(),
       listAccounts: vi.fn(),
@@ -35,7 +36,13 @@ beforeEach(() => {
       { serial: "ZY22", state: "unauthorized", model: "", emulator: false, android_version: null },
     ],
   });
-  mocked.devicePackages.mockResolvedValue({ packages: ["com.biznet.cmc", "com.demo.app"] });
+  mocked.devicePackages.mockResolvedValue({
+    packages: ["com.biznet.cmc", "com.demo.app"],
+    apps: [
+      { package: "com.biznet.cmc", version: "2.1" },
+      { package: "com.demo.app", version: "3.8.1" },
+    ],
+  });
   mocked.createApp.mockImplementation(async (body) => ({
     id: 21, name: body.name, platform: "android", url: body.url, allowed_domains: [], login_endpoints: [],
     default_profile_id: null, explored: false, last_run_at: null, accounts: 0,
@@ -46,29 +53,38 @@ beforeEach(() => {
 async function openAndroid() {
   renderWithProviders(<RunNewPage />, { route: "/" });
   const user = userEvent.setup();
-  await user.click(await screen.findByRole("radio", { name: /Android/ }));
+  await user.click(await screen.findByRole("radio", { name: /^Android$/ }));
   return user;
 }
 
-describe("Run baru: Android", () => {
-  it("aplikasi terpasang: membuat aplikasi android dan run dengan perangkat", async () => {
+describe("Run baru: Android (sesuai mockup)", () => {
+  it("kartu perangkat, daftar aplikasi dengan versi, lalu run dengan perangkat terpilih", async () => {
     const user = await openAndroid();
-    const device = await screen.findByLabelText("Perangkat");
-    await waitFor(() => expect(device).toHaveValue("R58M123"));
-    expect(screen.getByRole("option", { name: /ZY22/ })).toBeDisabled();
-    const pkg = await screen.findByLabelText("Aplikasi di HP");
-    await waitFor(() => expect(screen.getByRole("option", { name: "com.demo.app" })).toBeInTheDocument());
-    await user.selectOptions(pkg, "com.demo.app");
+    const ready = await screen.findByRole("radio", { name: /SM A546E/ });
+    await waitFor(() => expect(ready).toHaveAttribute("aria-checked", "true"));
+    expect(screen.getByRole("radio", { name: /Butuh izin/ })).toBeDisabled();
+    expect(screen.getByText("Emulator Android")).toBeInTheDocument();
+    expect(await screen.findByText("versi 3.8.1")).toBeInTheDocument();
+    await user.type(screen.getByLabelText("Cari aplikasi"), "demo");
+    expect(screen.queryByRole("radio", { name: /com.biznet.cmc/ })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("radio", { name: /com.demo.app/ }));
+    expect(screen.getByRole("radio", { name: /com.demo.app/ })).toHaveAttribute("aria-checked", "true");
     await user.click(screen.getByRole("button", { name: /Mulai run/ }));
     await waitFor(() => expect(mocked.createRun).toHaveBeenCalled());
     expect(mocked.createApp.mock.calls[0][0]).toMatchObject({ name: "com.demo.app", platform: "android", url: "android://com.demo.app" });
     expect(mocked.createRun.mock.calls[0][0]).toMatchObject({ app_id: 21, mode: "explore", device_serial: "R58M123" });
   });
 
+  it("panel Layar HP menampilkan pratinjau perangkat terpilih", async () => {
+    await openAndroid();
+    const img = await screen.findByAltText(/Layar SM A546E/);
+    expect(img.getAttribute("src")).toContain("/api/devices/R58M123/screen");
+  });
+
   it("upload APK memasang lalu memilih paketnya", async () => {
     mocked.installApk.mockResolvedValue({ package: "com.baru.app", packages: ["com.baru.app", "com.demo.app"], message: "", file: "x.apk" });
     const user = await openAndroid();
-    await waitFor(() => expect(screen.getByLabelText("Perangkat")).toHaveValue("R58M123"));
+    await waitFor(() => expect(screen.getByRole("radio", { name: /SM A546E/ })).toHaveAttribute("aria-checked", "true"));
     await user.click(screen.getByRole("radio", { name: /Upload APK/ }));
     const file = new File(["PK"], "Demo.apk", { type: "application/vnd.android.package-archive" });
     await user.upload(screen.getByLabelText("File APK"), file);
@@ -79,10 +95,23 @@ describe("Run baru: Android", () => {
     expect(mocked.createApp.mock.calls[0][0]).toMatchObject({ url: "android://com.baru.app" });
   });
 
-  it("tanpa perangkat siap: tombol run nonaktif dengan petunjuk", async () => {
+  it("tanpa perangkat: petunjuk dan tombol run nonaktif", async () => {
     mocked.listDevices.mockResolvedValue({ devices: [] });
     await openAndroid();
     expect(await screen.findByText(/Belum ada HP yang tersambung/)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Mulai run/ })).toBeDisabled();
+  });
+});
+
+describe("Simpan aplikasi", () => {
+  it("menyimpan aplikasi Android lalu membuka halaman Aplikasi untuk mengisi akun test", async () => {
+    const user = await openAndroid();
+    await user.click(await screen.findByRole("radio", { name: /com.demo.app/ }));
+    expect(screen.getByText(/belum punya akun test/)).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /Simpan aplikasi/ }));
+    await waitFor(() => expect(mocked.createApp).toHaveBeenCalled());
+    expect(mocked.createApp.mock.calls[0][0]).toMatchObject({ platform: "android", url: "android://com.demo.app" });
+    expect(await screen.findByTestId("navigated")).toBeInTheDocument();
+    expect(mocked.createRun).not.toHaveBeenCalled();
   });
 });

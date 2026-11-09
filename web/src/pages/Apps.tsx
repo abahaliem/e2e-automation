@@ -1,7 +1,7 @@
 ﻿import { DownloadSimple, FloppyDisk, Plus, Trash } from "@phosphor-icons/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState, type FormEvent } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { AccountsPanel } from "@/components/AccountsPanel";
 import { PlatformIcon } from "@/components/RunBits";
 import { Alert, Button, Card, EmptyState, Field, Input, PageHeader, Skeleton } from "@/components/ui";
@@ -16,11 +16,14 @@ const splitList = (text: string) =>
     .filter(Boolean);
 
 export function AppsPage() {
+  const [params] = useSearchParams();
   const apps = useQuery({ queryKey: ["apps"], queryFn: api.listApps });
   const [selected, setSelected] = useState<number | "new" | null>(null);
 
   useEffect(() => {
-    if (selected === null && apps.data?.length) setSelected(apps.data[0].id);
+    if (selected !== null || !apps.data?.length) return;
+    const wanted = Number(params.get("app"));
+    setSelected(apps.data.some((a) => a.id === wanted) ? wanted : apps.data[0].id);
   }, [apps.data, selected]);
 
   const list = apps.data ?? [];

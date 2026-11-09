@@ -99,3 +99,13 @@ describe("Halaman Aplikasi", () => {
     expect(await screen.findByText("Belum ada aplikasi")).toBeInTheDocument();
   });
 });
+
+describe("Aplikasi dari tautan", () => {
+  it("?app= memilih aplikasi tersebut", async () => {
+    const second = { ...app, id: 9, name: "WFM Dev", platform: "android" as const, url: "android://com.biznet.wfm.dev" };
+    mocked.listApps.mockResolvedValue([app, second]);
+    mocked.listAccounts.mockResolvedValue([]);
+    renderWithProviders(<AppsPage />, { path: "/apps?app=9" });
+    expect(await screen.findByDisplayValue("android://com.biznet.wfm.dev")).toBeInTheDocument();
+  });
+});
