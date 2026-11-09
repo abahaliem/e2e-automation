@@ -109,7 +109,11 @@ export const api = {
 
   // perangkat Android
   listDevices: () => get<{ devices: Device[] }>("/api/devices"),
-  devicePackages: (serial: string) => get<{ packages: string[] }>(`/api/devices/${encodeURIComponent(serial)}/packages`),
+  devicePackages: (serial: string) =>
+    get<{ packages: string[]; apps?: { package: string; version: string | null }[] }>(
+      `/api/devices/${encodeURIComponent(serial)}/packages`,
+    ),
+  deviceScreenUrl: (serial: string, tick: number) => `/api/devices/${encodeURIComponent(serial)}/screen?t=${tick}`,
   installApk: (serial: string, file: File) =>
     request<InstallResult>(`/api/devices/${encodeURIComponent(serial)}/install?filename=${encodeURIComponent(file.name)}`, {
       method: "POST",

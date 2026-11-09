@@ -1,8 +1,8 @@
-﻿import { AndroidLogo, FileArrowUp, Globe, GlobeSimple, MapTrifold, Play, ShieldWarning, Target, X } from "@phosphor-icons/react";
+﻿import { AndroidLogo, BookmarkSimple, FileArrowUp, Globe, GlobeSimple, MapTrifold, Play, ShieldWarning, Target, X } from "@phosphor-icons/react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useState, type DragEvent, type FormEvent } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { AndroidTarget } from "@/components/AndroidTarget";
+import { AndroidTarget, PhonePreview } from "@/components/AndroidTarget";
 import { PlatformIcon } from "@/components/RunBits";
 import { Alert, Button, Field, PageHeader, Select, Switch } from "@/components/ui";
 import { ApiError, api } from "@/lib/api";
@@ -94,13 +94,28 @@ export function RunNewPage() {
     setModule("");
   }
 
+  const ensureApp = async (): Promise<App> => {
+    if (matched) return matched;
+    const host = platform === "android" ? androidPackage : new URL(url.trim()).host;
+    return api.createApp({ name: host, platform, url: url.trim(), allowed_domains: [], login_endpoints: [] });
+  };
+
+  const targetError = (): Record<string, string> => {
+    const next: Record<string, string> = {};
+    if (platform === "web" && !/^https?:\/\/\S+$/.test(url.trim())) next.url = "URL harus diawali http:// atau https://";
+    if (platform === "android" && !androidPackage) next.package = "Pilih aplikasi yang akan diuji";
+    return next;
+  };
+
+  const saveApp = useMutation({
+    mutationFn: ensureApp,
+    onSuccess: (app) => navigate(`/apps?app=${app.id}`),
+    onError: (e) => setErrors({ _: e instanceof Error ? e.message : String(e) }),
+  });
+
   const start = useMutation({
     mutationFn: async () => {
-      let app = matched;
-      if (!app) {
-        const host = platform === "android" ? androidPackage : new URL(url.trim()).host;
-        app = await api.createApp({ name: host, platform, url: url.trim(), allowed_domains: [], login_endpoints: [] });
-      }
+      const app = await ensureApp();
       const body: RunInput = {
         app_id: app.id,
         mode,
@@ -123,9 +138,7 @@ export function RunNewPage() {
 
   const submit = (e: FormEvent) => {
     e.preventDefault();
-    const next: Record<string, string> = {};
-    if (platform === "web" && !/^https?:\/\/\S+$/.test(url.trim())) next.url = "URL harus diawali http:// atau https://";
-    if (platform === "android" && !androidPackage) next.package = "Pilih aplikasi yang akan diuji";
+    const next: Record<string, string> = targetError();
     if (platform === "android" && !serial) next._ = "Pilih perangkat Android yang siap dipakai";
     if (mode === "deep" && !module) next.module = "Pilih modul yang akan diuji";
     if (!profiles.data?.length) next._ = "Belum ada profil AI. Tambahkan di Pengaturan > Model AI.";
@@ -152,7 +165,7 @@ export function RunNewPage() {
     <main className="flex flex-col gap-8 px-10 py-8">
       <PageHeader
         title="Run baru"
-        description="Pilih target, lalu agent menguji dan menyusun test case beserta evidence."
+        description={platform === "android" ? "Pilih HP atau emulator, lalu uji aplikasi yang sudah terpasang atau upload file APK." : "Pilih target, lalu agent menguji dan menyusun test case beserta evidence."}
         actions={
           <div role="radiogroup" aria-label="Platform" className="inline-flex rounded-lg border border-ink-700 bg-ink-900 p-1 text-sm">
             {(
@@ -180,7 +193,7 @@ export function RunNewPage() {
         }
       />
 
-      <div className="grid grid-cols-[minmax(0,1fr)_340px] gap-10">
+      <div className={cn("grid gap-10", platform === "android" ? "grid-cols-[minmax(0,1fr)_300px]" : "grid-cols-[minmax(0,1fr)_340px]")}>
         <form onSubmit={submit} noValidate className="flex flex-col gap-7">
           {platform === "android" ? (
             <AndroidTarget serial={serial} onSerial={setSerial} pkg={androidPackage} onPackage={setAndroidPackage} error={errors.package} />
@@ -222,7 +235,11 @@ export function RunNewPage() {
             <Field
               label="Akun test"
               htmlFor="run-account"
-              hint={matched && accounts.data?.length === 0 ? "Belum ada akun. Tambahkan di menu Aplikasi bila perlu login." : undefined}
+              hint={
+                url && (!matched || accounts.data?.length === 0)
+                  ? "Aplikasi ini belum punya akun test. Klik Simpan aplikasi lalu isi akunnya bila aplikasi butuh login."
+                  : undefined
+              }
             >
               <Select
                 id="run-account"
@@ -356,9 +373,24 @@ export function RunNewPage() {
               <Play weight="fill" />
               {start.isPending ? "Menyiapkan..." : "Mulai run"}
             </Button>
+            <Button
+              size="lg"
+              disabled={saveApp.isPending}
+              onClick={() => {
+                const next = targetError();
+                setErrors(next);
+                if (Object.keys(next).length === 0) saveApp.mutate();
+              }}
+            >
+              <BookmarkSimple />
+              Simpan aplikasi
+            </Button>
           </div>
         </form>
 
+        {platform === "android" ? (
+          <PhonePreview serial={serial} />
+        ) : (
         <aside className="flex flex-col gap-3">
           <h2 className="text-sm font-medium text-fg-muted">Aplikasi tersimpan</h2>
           {apps.data && apps.data.length > 0 ? (
@@ -388,6 +420,7 @@ export function RunNewPage() {
             </p>
           )}
         </aside>
+        )}
       </div>
     </main>
   );
