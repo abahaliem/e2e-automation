@@ -22,6 +22,9 @@ class RunIn(BaseModel):
     environment: Literal["dev", "production"] = "dev"
     confirm_each_step: bool = False
     device_serial: str | None = Field(default=None, max_length=120)
+    apk_file: str | None = Field(default=None, max_length=255)
+    apk_grant: bool = True
+    apk_uninstall: bool = False
 
 
 class ControlIn(BaseModel):

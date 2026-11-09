@@ -175,3 +175,50 @@ def test_device_screen_preview(ctx):
     r = client.get("/api/devices/R58M123/screen")
     assert r.status_code == 200 and r.headers["content-type"] == "image/jpeg" and r.content[:2] == b"\xff\xd8"
     assert r.headers["cache-control"] == "no-store"
+
+def test_apk_upload_reads_info_without_installing(ctx):
+    from tests.apk_builder import make_apk
+
+    client, state, *_ = ctx
+    r = client.post("/api/devices/R58M123/apk?filename=hr-mobile-3.9.0-debug.apk", content=make_apk("com.demo.app", "3.9.0"))
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["package"] == "com.demo.app" and body["version"] == "3.9.0"
+    assert body["installed_version"] == "3.8.1" and body["size_bytes"] > 0
+    assert body["file"].endswith("hr-mobile-3.9.0-debug.apk")
+    assert state["installed"] == []  # belum dipasang; dipasang saat run dimulai
+    bad = client.post("/api/devices/R58M123/apk?filename=rusak.apk", content=b"bukan zip")
+    assert bad.status_code == 422 and "APK" in bad.json()["detail"]
+
+
+def test_run_installs_apk_then_uninstalls(ctx, monkeypatch):
+    from tests.apk_builder import make_apk
+
+    client, _, app_obj, brains = ctx
+    fake = FakeAdb({"HOME": HOME_XML, "USERS": USERS_XML}, "HOME", {("HOME", (0, 300, 1080, 420)): "USERS"})
+    log = []
+    fake.install = lambda path, grant=True: log.append(("install", path.endswith(".apk"), grant))
+    fake.uninstall = lambda pkg: log.append(("uninstall", pkg))
+    monkeypatch.setattr("qa_agent.drivers.adb.Adb", lambda serial=None, **kw: fake)
+    import qa_agent.drivers.android as android_mod
+    original = android_mod.AndroidDriver.__init__
+    monkeypatch.setattr(android_mod.AndroidDriver, "__init__",
+                        lambda self, adb, package, **kw: original(self, adb, package, sleep=lambda s: None))
+    brains.make = lambda profile: FakeLLM(brain)
+    client.post("/api/profiles", json={"name": "P", "base_url": "http://x/v1", "model": "m", "api_key": "k"})
+    up = client.post("/api/devices/R58M123/apk?filename=demo.apk", content=make_apk("com.demo.app", "3.9.0")).json()
+    app = client.post("/api/apps", json={"name": "Demo HP", "platform": "android", "url": "android://com.demo.app"}).json()
+    run = client.post("/api/runs", json={"app_id": app["id"], "mode": "explore", "device_serial": "R58M123",
+                                         "apk_file": up["file"], "apk_grant": False, "apk_uninstall": True}).json()
+    wait_for(lambda: client.get(f"/api/runs/{run['id']}").json()["status"] in ("completed", "interrupted", "paused"))
+    assert client.get(f"/api/runs/{run['id']}").json()["status"] == "completed"
+    assert log == [("install", True, False), ("uninstall", "com.demo.app")]
+
+
+def test_run_rejects_unknown_apk_file(ctx):
+    client, *_ = ctx
+    client.post("/api/profiles", json={"name": "P", "base_url": "http://x/v1", "model": "m", "api_key": "k"})
+    app = client.post("/api/apps", json={"name": "Demo HP", "platform": "android", "url": "android://com.demo.app"}).json()
+    r = client.post("/api/runs", json={"app_id": app["id"], "mode": "explore", "device_serial": "R58M123",
+                                       "apk_file": "../../qa-agent.db"})
+    assert r.status_code == 422 and "APK" in r.json()["detail"]
