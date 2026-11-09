@@ -69,6 +69,15 @@ CREATE TABLE IF NOT EXISTS skills (
   active INTEGER NOT NULL DEFAULT 1,
   created_at TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS flows (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  app_id INTEGER NOT NULL REFERENCES apps(id) ON DELETE CASCADE,
+  name TEXT NOT NULL COLLATE NOCASE,
+  steps TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  UNIQUE(app_id, name)
+);
 CREATE TABLE IF NOT EXISTS users (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   username TEXT NOT NULL UNIQUE COLLATE NOCASE,
@@ -153,6 +162,16 @@ class RunRow(BaseModel):
     note: str = ""
     model: str = ""
     options: dict[str, Any] = Field(default_factory=dict)
+
+
+class FlowRow(BaseModel):
+    """Modul kustom: alur bisnis yang ditulis QA (mis. buka WO sampai Closed)."""
+    id: int
+    app_id: int
+    name: str
+    steps: str
+    created_at: str = ""
+    updated_at: str = ""
 
 
 class UserRow(BaseModel):
@@ -389,6 +408,41 @@ class Store:
         """Skill aktif yang berlaku untuk aplikasi ini dan dipakai di salah satu tahap."""
         return [s for s in self.list_skills()
                 if s.active and (not s.app_ids or app_id in s.app_ids) and set(s.stages) & set(stages)]
+
+    # ---------- modul kustom (alur bisnis) ----------
+    def create_flow(self, *, app_id: int, name: str, steps: str) -> FlowRow:
+        now = now_iso()
+        try:
+            cur = self._exec("INSERT INTO flows (app_id, name, steps, created_at, updated_at) VALUES (?,?,?,?,?)",
+                             (app_id, name.strip(), steps, now, now))
+        except sqlite3.IntegrityError as e:
+            raise ValueError(f"name::Alur '{name.strip()}' sudah ada di aplikasi ini") from e
+        return self.get_flow(cur.lastrowid)  # type: ignore[return-value]
+
+    def get_flow(self, flow_id: int) -> FlowRow | None:
+        row = self._one("SELECT * FROM flows WHERE id=?", (flow_id,))
+        return None if row is None else FlowRow.model_validate(dict(row))
+
+    def list_flows(self, app_id: int) -> list[FlowRow]:
+        return [FlowRow.model_validate(dict(r)) for r in self._all("SELECT * FROM flows WHERE app_id=? ORDER BY id", (app_id,))]
+
+    def find_flow(self, app_id: int, name: str) -> FlowRow | None:
+        row = self._one("SELECT * FROM flows WHERE app_id=? AND name=? COLLATE NOCASE", (app_id, " ".join(name.split())))
+        return None if row is None else FlowRow.model_validate(dict(row))
+
+    def update_flow(self, flow_id: int, *, name: str | None = None, steps: str | None = None) -> FlowRow:
+        flow = self.get_flow(flow_id)
+        if flow is None:
+            raise KeyError(flow_id)
+        try:
+            self._exec("UPDATE flows SET name=?, steps=?, updated_at=? WHERE id=?",
+                       ((name or flow.name).strip(), steps if steps is not None else flow.steps, now_iso(), flow_id))
+        except sqlite3.IntegrityError as e:
+            raise ValueError(f"name::Alur '{name}' sudah ada di aplikasi ini") from e
+        return self.get_flow(flow_id)  # type: ignore[return-value]
+
+    def delete_flow(self, flow_id: int) -> None:
+        self._exec("DELETE FROM flows WHERE id=?", (flow_id,))
 
     # ---------- pengaturan umum (key-value) ----------
     def get_setting(self, key: str) -> str | None:

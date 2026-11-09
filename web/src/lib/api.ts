@@ -4,6 +4,7 @@ import type {
   App,
   AuthStatus,
   AuthUser,
+  Flow,
   PlanCase,
   PlanResponse,
   Role,
@@ -111,7 +112,12 @@ export const api = {
   createApp: (body: AppInput) => post<App>("/api/apps", body),
   updateApp: (id: number, body: Partial<AppInput>) => patch<App>(`/api/apps/${id}`, body),
   deleteApp: (id: number) => del(`/api/apps/${id}`),
-  appModules: (id: number) => get<{ modules: string[]; explored: boolean }>(`/api/apps/${id}/modules`),
+  appModules: (id: number) =>
+    get<{ modules: string[]; explored: boolean; flows?: { id: number; name: string }[] }>(`/api/apps/${id}/modules`),
+  listFlows: (appId: number) => get<Flow[]>(`/api/apps/${appId}/flows`),
+  createFlow: (appId: number, body: { name: string; steps: string }) => post<Flow>(`/api/apps/${appId}/flows`, body),
+  updateFlow: (id: number, body: { name?: string; steps?: string }) => patch<Flow>(`/api/flows/${id}`, body),
+  deleteFlow: (id: number) => del(`/api/flows/${id}`),
   listAccounts: (appId: number) => get<Account[]>(`/api/apps/${appId}/accounts`),
   createAccount: (appId: number, body: { role: string; username: string; password: string }) =>
     post<Account>(`/api/apps/${appId}/accounts`, body),

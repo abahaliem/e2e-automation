@@ -89,16 +89,18 @@ export function RunNewPage() {
   }, [accounts.data, accountId]);
 
   const explored = !!modules.data?.explored;
+  const flowNames = (modules.data?.flows ?? []).map((f) => f.name); // modul kustom (alur bisnis)
   useEffect(() => {
     if (!explored && mode === "deep") setMode("explore");
   }, [explored, mode]);
   // ?module= dari halaman hasil penjelajahan (tombol Uji modul ini)
   const moduleParam = params.get("module");
   useEffect(() => {
-    if (moduleParam && explored && modules.data?.modules.includes(moduleParam) && !reuse) {
+    if (moduleParam && explored && (modules.data?.modules.includes(moduleParam) || flowNames.includes(moduleParam)) && !reuse) {
       setMode("deep");
       setModule(moduleParam);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [moduleParam, explored, modules.data, reuse]);
   useEffect(() => {
     // modul mengikuti run sumber test case
@@ -330,6 +332,15 @@ export function RunNewPage() {
                         ))}
                       </optgroup>
                     )}
+                    {explored && flowNames.length > 0 && (
+                      <optgroup label="Alur bisnis (modul kustom)">
+                        {flowNames.map((m) => (
+                          <option key={m} value={`deep:${m}`}>
+                            Alur: {m}
+                          </option>
+                        ))}
+                      </optgroup>
+                    )}
                   </Select>
                 </Field>
                 {accountField}
@@ -414,6 +425,15 @@ export function RunNewPage() {
                     {m}
                   </option>
                 ))}
+                {flowNames.length > 0 && (
+                  <optgroup label="Alur bisnis (modul kustom)">
+                    {flowNames.map((m) => (
+                      <option key={m} value={m}>
+                        Alur: {m}
+                      </option>
+                    ))}
+                  </optgroup>
+                )}
               </Select>
             </Field>
           )}

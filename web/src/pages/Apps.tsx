@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState, type FormEvent } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { AccountsPanel } from "@/components/AccountsPanel";
+import { FlowsPanel } from "@/components/FlowsPanel";
 import { PlatformIcon } from "@/components/RunBits";
 import { Alert, Button, Card, EmptyState, Field, Input, PageHeader, Skeleton } from "@/components/ui";
 import { ApiError, api } from "@/lib/api";
@@ -88,6 +89,7 @@ export function AppsPage() {
                 </div>
                 <AccountsPanel appId={current.id} />
               </Card>
+              <FlowsPanel app={current} />
               <ImportRuns app={current} />
             </>
           )}

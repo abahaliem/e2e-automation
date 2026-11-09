@@ -1,4 +1,5 @@
 import { screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { api } from "@/lib/api";
 import type { Run } from "@/lib/types";
 import { renderWithProviders } from "@/test/render";
@@ -28,5 +29,21 @@ describe("Peta aplikasi (hasil Seluruh aplikasi)", () => {
     expect(screen.getByRole("img", { name: "Layar Sign In" })).toHaveAttribute("src", "/api/runs/21/files/s1.png");
     const links = screen.getAllByRole("link", { name: /Uji modul ini/ });
     expect(links[1]).toHaveAttribute("href", "/runs/new?app=4&module=Work%20Order&platform=android");
+  });
+
+  it("klik layar membuka detailnya", async () => {
+    mocked.runMap.mockResolvedValue({
+      screens: 1,
+      modules: [{ name: "Work Order", screens: [{ page_name: "Menu Navigasi", purpose: "Menu samping", url: "android://x#1", public: false, depth: 1, forms: [], actions: ["Buka History", "Clock Out"], screenshot_url: "/s.png" }] }],
+    });
+    const run = { id: 21, app_id: 4, platform: "android", status: "completed", mode: "explore" } as Run;
+    renderWithProviders(<AppMapView run={run} />);
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Detail layar Menu Navigasi" }));
+    const dialog = screen.getByRole("dialog", { name: "Layar Menu Navigasi" });
+    expect(dialog).toHaveTextContent("Clock Out");
+    expect(dialog).toHaveTextContent("Perlu login");
+    await user.click(screen.getByRole("button", { name: "Tutup" }));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 });

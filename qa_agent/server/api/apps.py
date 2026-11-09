@@ -149,7 +149,63 @@ def app_modules(app_id: int, request: Request) -> dict:
         raise deps.not_found("Aplikasi")
     modules = deps.manager(request).modules(app_id)
     explored = deps.store(request).latest_completed_explore(app_id) is not None
-    return {"modules": modules, "explored": explored}
+    flows = [{"id": f.id, "name": f.name} for f in deps.store(request).list_flows(app_id)]
+    return {"modules": modules, "explored": explored, "flows": flows}
+
+
+# ---------- modul kustom (alur bisnis) ----------
+class FlowIn(BaseModel):
+    name: str = Field(min_length=1, max_length=80)
+    steps: str = Field(max_length=12_000)
+
+
+class FlowPatch(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=80)
+    steps: str | None = Field(default=None, max_length=12_000)
+
+
+def _check_flow(request: Request, app_id: int, name: str | None, steps: str | None) -> None:
+    if steps is not None and not steps.strip():
+        raise ValueError("steps::Tulis langkah alurnya")
+    if name is not None:
+        explored = {m.lower() for m in deps.manager(request).modules(app_id)}
+        if " ".join(name.split()).lower() in explored:
+            raise ValueError("name::Nama ini sama dengan modul hasil penjelajahan. Pakai nama lain, mis. 'Alur ...'")
+
+
+@router.get("/apps/{app_id}/flows")
+def list_flows(app_id: int, request: Request) -> list[dict]:
+    if deps.store(request).get_app(app_id) is None:
+        raise deps.not_found("Aplikasi")
+    return [f.model_dump() for f in deps.store(request).list_flows(app_id)]
+
+
+@router.post("/apps/{app_id}/flows", status_code=201)
+def create_flow(app_id: int, body: FlowIn, request: Request) -> dict:
+    if deps.store(request).get_app(app_id) is None:
+        raise deps.not_found("Aplikasi")
+    name = " ".join(body.name.split())
+    _check_flow(request, app_id, name, body.steps)
+    return deps.store(request).create_flow(app_id=app_id, name=name, steps=body.steps.strip()).model_dump()
+
+
+@router.patch("/flows/{flow_id}")
+def patch_flow(flow_id: int, body: FlowPatch, request: Request) -> dict:
+    store = deps.store(request)
+    flow = store.get_flow(flow_id)
+    if flow is None:
+        raise deps.not_found("Alur")
+    name = " ".join(body.name.split()) if body.name is not None else None
+    _check_flow(request, flow.app_id, name, body.steps)
+    return store.update_flow(flow_id, name=name, steps=body.steps.strip() if body.steps is not None else None).model_dump()
+
+
+@router.delete("/flows/{flow_id}", status_code=204)
+def delete_flow(flow_id: int, request: Request) -> Response:
+    if deps.store(request).get_flow(flow_id) is None:
+        raise deps.not_found("Alur")
+    deps.store(request).delete_flow(flow_id)
+    return Response(status_code=204)
 
 
 @router.get("/apps/{app_id}/accounts")
