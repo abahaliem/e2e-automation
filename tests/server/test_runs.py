@@ -152,3 +152,40 @@ def test_stop_command_interrupts(env, demo):
     manager.command(run.id, "stop")
     stopped = finished(store, run.id, ("interrupted",))
     assert "QA" in stopped.note
+
+
+def test_run_prompts_include_active_skills(env, demo):
+    from qa_agent.server.skillbank import skills_dir, text_path
+    from tests.integration.brain import DemoBrain
+
+    settings, store, secrets, _, manager, brains = env
+    manager.start()
+    profile, app, account = seed_demo(store, secrets, demo)
+    plan_only = store.create_skill(name="Standar TC", filename="s.md", pages=1, chars=20, stages=["plan"])
+    exec_only = store.create_skill(name="Checklist", filename="c.md", pages=1, chars=20, stages=["execute"])
+    other_app = store.create_skill(name="Aplikasi lain", filename="o.md", pages=1, chars=20, stages=["plan"], app_ids=[999])
+    skills_dir(settings).mkdir(parents=True, exist_ok=True)
+    text_path(settings, plan_only.id).write_text("ATURAN-PLAN-123", encoding="utf-8")
+    text_path(settings, exec_only.id).write_text("ATURAN-EXEC-456", encoding="utf-8")
+    text_path(settings, other_app.id).write_text("TIDAK-BOLEH-MUNCUL", encoding="utf-8")
+    systems: list[str] = []
+
+    def factory(profile_row):
+        brain = DemoBrain()
+
+        def respond(system, messages):
+            systems.append(system)
+            return brain(system, messages)
+
+        return FakeLLM(respond)
+
+    brains.make = factory
+    explore(manager, store, profile, app, account)
+    run = manager.submit(RunRequest(app_id=app.id, mode="deep", module="Pengguna", profile_id=profile.id,
+                                    account_id=account.id, environment="dev"))
+    finished(store, run.id)
+    plan = [s for s in systems if s.startswith("MODE: PLAN")][0]
+    execute = [s for s in systems if s.startswith("MODE: EXECUTE")][-1]
+    assert "QA Engineer profesional" in plan and "ATURAN-PLAN-123" in plan and "ATURAN-EXEC-456" not in plan
+    assert "ATURAN-EXEC-456" in execute and "ATURAN-PLAN-123" not in execute
+    assert not any("TIDAK-BOLEH-MUNCUL" in s for s in systems)

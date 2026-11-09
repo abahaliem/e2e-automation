@@ -3,7 +3,7 @@ from __future__ import annotations
 import signal
 import sys
 import threading
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable
@@ -58,13 +58,15 @@ class Runtime:
     data_prefix: str
     control: RunControl | None = None
     on_event: Callable[[dict], None] = lambda e: None
+    skills: dict[str, str] = field(default_factory=dict)  # {"plan": ..., "execute": ...} bagian '## Skill QA'
 
 
 def build_runtime(cfg: Config, store: RunStore, project_dir: Path, *, environment: str,
                   llm: LLMClient | None = None, now: datetime | None = None,
                   credentials: Credentials | None = None, api_key: str | None = None,
                   control: RunControl | None = None, on_event: Callable[[dict], None] | None = None,
-                  auth_state: Path | None = None, device_serial: str | None = None) -> Runtime:
+                  auth_state: Path | None = None, device_serial: str | None = None,
+                  skills: dict[str, str] | None = None) -> Runtime:
     """Parameter eksplisit (kredensial, API key, control, on_event) dipakai dashboard; CLI membaca environment."""
     guard = Guard(environment, cfg.domains(), extra_keywords=cfg.guard.extra_risky_keywords,
                   login_endpoints=cfg.target.login_endpoints)
@@ -86,7 +88,7 @@ def build_runtime(cfg: Config, store: RunStore, project_dir: Path, *, environmen
     emit = on_event or (lambda e: None)
     common = dict(driver=driver, llm=llm, guard=guard, store=store, masker=masker, data_prefix=data_prefix,
                   max_steps=cfg.limits.max_steps_per_tc, vision=cfg.llm.vision, should_stop=stop,
-                  platform=cfg.target.platform,
+                  platform=cfg.target.platform, skills=(skills or {}).get("execute", ""),
                   control=control, on_event=emit)
     login_loop = AgentLoop(**common)
 
@@ -104,7 +106,7 @@ def build_runtime(cfg: Config, store: RunStore, project_dir: Path, *, environmen
                        auth_state or auth_state_path(project_dir, cfg.target.url, creds.role), creds.role)
     return Runtime(cfg=cfg, store=store, environment=environment, driver=driver, llm=llm, guard=guard, masker=masker,
                    stop=stop, loop=AgentLoop(**common), auth=auth, data_prefix=data_prefix, control=control,
-                   on_event=emit)
+                   on_event=emit, skills=skills or {})
 
 
 def _should_stop(rt: Runtime) -> Callable[[], bool]:
@@ -124,7 +126,8 @@ def make_explorer(rt: Runtime) -> Explorer:
 
 
 def make_planner(rt: Runtime) -> DeepPlanner:
-    return DeepPlanner(rt.llm, data_prefix=rt.data_prefix, max_tcs=rt.cfg.limits.deep_max_tcs)
+    return DeepPlanner(rt.llm, data_prefix=rt.data_prefix, max_tcs=rt.cfg.limits.deep_max_tcs,
+                       skills=rt.skills.get("plan", ""))
 
 
 def make_runner(rt: Runtime) -> DeepRunner:

@@ -21,6 +21,7 @@ from qa_agent.models import STATUSES, AppMap, RunMeta
 from qa_agent.orchestrator.auth import LoginFailed
 from qa_agent.orchestrator.deep import PlanError
 from qa_agent.server.reporting import build_run_reports
+from qa_agent.server.skillbank import sections_for
 from qa_agent.report.excel import ReportLockedError
 from qa_agent.runtime import build_runtime, make_explorer, make_planner, make_runner
 from qa_agent.server.events import EventHub
@@ -354,7 +355,8 @@ class RunManager:
             auth_state = self.settings.auth_dir / f"app-{row.app_id}-{slugify(creds.role)}.json"
             rt = build_runtime(cfg, rs, self.settings.data_dir, environment=row.environment, llm=llm,
                                credentials=creds, api_key=api_key, control=active.control, on_event=on_event,
-                               auth_state=auth_state, device_serial=row.options.get("device_serial"))
+                               auth_state=auth_state, device_serial=row.options.get("device_serial"),
+                               skills=sections_for(self.store, self.settings, row.app_id))
             if meta is None:
                 meta = RunMeta(mode=row.mode, target=cfg.target.url, environment=row.environment,  # type: ignore[arg-type]
                                model=profile.model, started_at=now_iso(), module=row.module)

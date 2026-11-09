@@ -81,7 +81,9 @@ class AgentLoop:
         should_stop: Callable[[], bool] = lambda: False,
         control: RunControl | None = None,
         on_event: Callable[[dict], None] = lambda e: None,
+        skills: str = "",
     ) -> None:
+        self.skills = skills  # bagian '## Skill QA' (tahap Menjalankan test & Menilai hasil)
         self.driver = driver
         self.llm = llm
         self.guard = guard
@@ -111,7 +113,7 @@ class AgentLoop:
                 self.control.reset_case()
 
     def _run(self, tc_id: str, goal: str, *, allow_logout: bool, login: bool) -> LoopOutcome:
-        system = prompts.execute_system(self.platform, self.data_prefix)
+        system = prompts.execute_system(self.platform, self.data_prefix, skills=self.skills)
         history: list[str] = []
         notes: list[str] = []
         hints: list[str] = []

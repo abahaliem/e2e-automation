@@ -65,18 +65,21 @@ Catatan aplikasi Android:
 """
 
 
-def execute_system(platform: str, data_prefix: str) -> str:
+def execute_system(platform: str, data_prefix: str, skills: str = "") -> str:
     text = EXECUTE_SYSTEM.replace("<<platform>>", platform).replace("<<data_prefix>>", data_prefix)
-    return text + ANDROID_NOTE if platform == "android" else text
+    if platform == "android":
+        text += ANDROID_NOTE
+    return text + ("\n" + skills if skills else "")
 
 
 def explore_system(known_modules: list[str]) -> str:
     return EXPLORE_SYSTEM.replace("<<modules>>", ", ".join(known_modules) or "(belum ada)")
 
 
-def plan_system(module: str, max_tcs: int, data_prefix: str, has_prd: bool) -> str:
-    return (PLAN_SYSTEM.replace("<<module>>", module).replace("<<max>>", str(max_tcs))
+def plan_system(module: str, max_tcs: int, data_prefix: str, has_prd: bool, skills: str = "") -> str:
+    text = (PLAN_SYSTEM.replace("<<module>>", module).replace("<<max>>", str(max_tcs))
             .replace("<<data_prefix>>", data_prefix).replace("<<prd_hint>>", " dan PRD" if has_prd else ""))
+    return text + ("\n" + skills if skills else "")
 
 
 def format_element(e: Element) -> str:
