@@ -156,6 +156,7 @@ export interface RunInput {
   device_serial?: string | null;
   review_first?: boolean;
   reuse_cases_from?: number | null;
+  ask_before_finish?: boolean;
   apk_file?: string | null;
   apk_grant?: boolean;
   apk_uninstall?: boolean;
@@ -172,7 +173,8 @@ export type ControlCommand =
   | "stop"
   | "end_case"
   | "confirm_step"
-  | "input";
+  | "input"
+  | "finish_explore";
 
 export interface ControlInput {
   command: ControlCommand;
@@ -300,6 +302,8 @@ export interface Snapshot {
   steps: StepEvent[];
   cases: { tc_id: string; title: string; status: Status | null }[];
   screens: number;
+  /** Seluruh aplikasi: agent bertanya lanjutkan memetakan atau selesai */
+  asking?: { screens: number; modules: number; new_screens?: number } | null;
 }
 
 export type RunEvent = { type: string; seq?: number; [key: string]: unknown };
@@ -338,3 +342,16 @@ export type PlanResponse = {
   cases: PlanCase[];
   screens: { url: string; page_name: string }[];
 };
+
+// ---------- hasil penjelajahan (peta aplikasi) ----------
+export type MapScreen = {
+  page_name: string;
+  purpose: string;
+  url: string;
+  public: boolean;
+  depth: number;
+  forms: string[];
+  actions: string[];
+  screenshot_url: string | null;
+};
+export type RunMap = { modules: { name: string; screens: MapScreen[] }[]; screens: number };

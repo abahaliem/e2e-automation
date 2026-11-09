@@ -35,9 +35,18 @@ export function applyEvent(snap: Snapshot, event: RunEvent): Snapshot {
       next.status = (event.status as Snapshot["status"]) ?? snap.status;
       next.counts = (event.counts as Snapshot["counts"]) ?? snap.counts;
       next.note = (event.note as string) ?? snap.note;
+      if (next.status !== "running") next.asking = null;
       break;
     case "control.state":
       next.control_state = event.state as Snapshot["control_state"];
+      if ((event.state === "running" || event.state === "stopped") && event.command !== "explore.ask") next.asking = null;
+      break;
+    case "explore.ask":
+      next.asking = {
+        screens: Number(event.screens ?? 0),
+        modules: Number(event.modules ?? 0),
+        ...(typeof event.new_screens === "number" ? { new_screens: event.new_screens } : {}),
+      };
       break;
     case "tc.started": {
       const tc_id = event.tc_id as string;

@@ -2,6 +2,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
+import { AppMapView } from "@/components/AppMapView";
 import { StatusBadge } from "@/components/StatusBadge";
 import { Alert, Button, Card, EmptyState, Select, Skeleton, Textarea } from "@/components/ui";
 import { api } from "@/lib/api";
@@ -129,18 +130,13 @@ export function RunResultPage() {
 
       {r?.note && r.status !== "completed" && <Alert tone="warning">{r.note}</Alert>}
 
-      {cases.isLoading ? (
+      {r?.mode === "explore" ? (
+        <AppMapView run={r} />
+      ) : cases.isLoading ? (
         <Skeleton className="h-24" />
       ) : total === 0 ? (
         <Card>
-          <EmptyState
-            title={r?.mode === "explore" ? "Run ini memetakan aplikasi" : "Belum ada test case"}
-            description={
-              r?.mode === "explore"
-                ? "Hasilnya berupa inventaris fitur per modul. Unduh Excel atau HTML untuk melihatnya, lalu jalankan Satu modul untuk membuat test case."
-                : "Test case belum disusun atau run berhenti sebelum menyusunnya."
-            }
-          />
+          <EmptyState title="Belum ada test case" description="Test case belum disusun atau run berhenti sebelum menyusunnya." />
         </Card>
       ) : (
         <>

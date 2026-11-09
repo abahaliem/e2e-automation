@@ -192,6 +192,29 @@ export function RunLivePage() {
 
       <div className="flex flex-col gap-2 px-5 [&:not(:empty)]:pt-3">
         {error && <Alert tone="error">{error}</Alert>}
+        {snapshot?.asking && active && (
+          <Alert
+            tone="info"
+            action={
+              <div className="flex gap-2">
+                <Button size="sm" variant="primary" onClick={() => send({ command: control === "takeover" ? "release" : "resume" })}>
+                  Lanjutkan memetakan
+                </Button>
+                <Button size="sm" onClick={() => send({ command: "finish_explore" })}>
+                  Selesai
+                </Button>
+              </div>
+            }
+          >
+            <span className="font-medium">
+              {snapshot.asking.new_screens === 0
+                ? "Tidak ada layar baru di putaran ini."
+                : `Agent sudah memetakan ${snapshot.asking.screens} layar dalam ${snapshot.asking.modules} modul.`}
+            </span>{" "}
+            Lanjutkan memetakan? Agent akan mencoba tombol yang belum dicoba di semua layar. Ada menu yang terlewat? Klik{" "}
+            <b>Ambil alih</b>, buka menunya di layar live, lalu klik <b>Lanjutkan memetakan</b>.
+          </Alert>
+        )}
         {status === "paused" && awaitingReview && (
           <Alert
             tone="info"

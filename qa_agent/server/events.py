@@ -28,6 +28,7 @@ class _RunState:
         self.steps: OrderedDict[tuple[str, int], dict] = OrderedDict()
         self.cases: OrderedDict[str, dict] = OrderedDict()
         self.screens = 0
+        self.asking: dict | None = None  # explorer menunggu jawaban QA: lanjutkan memetakan / selesai
 
     def apply(self, event: dict) -> None:
         kind = event.get("type")
@@ -35,8 +36,14 @@ class _RunState:
             self.status = event.get("status", self.status)
             self.note = event.get("note", self.note)
             self.counts = event.get("counts", self.counts)
+            if self.status != "running":
+                self.asking = None
+        elif kind == "explore.ask":
+            self.asking = {k: event[k] for k in ("screens", "modules", "new_screens") if k in event}
         elif kind == "control.state":
             self.control_state = event.get("state", self.control_state)
+            if self.control_state in ("running", "stopped") and event.get("command") != "explore.ask":
+                self.asking = None
         elif kind == "tc.started":
             self.current_tc = event["tc_id"]
             self.cases[event["tc_id"]] = {"tc_id": event["tc_id"], "title": event.get("title", ""), "status": None}
@@ -64,7 +71,7 @@ class _RunState:
             "type": "snapshot", "run_id": run_id, "seq": self.seq, "status": self.status,
             "control_state": self.control_state, "note": self.note, "counts": self.counts,
             "current_tc": self.current_tc, "planned": self.planned, "steps": list(self.steps.values()),
-            "cases": list(self.cases.values()), "screens": self.screens,
+            "cases": list(self.cases.values()), "screens": self.screens, "asking": self.asking,
         }
 
 

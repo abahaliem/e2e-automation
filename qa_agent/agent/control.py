@@ -42,6 +42,7 @@ class RunControl:
         self._confirmed = False
         self._confirm_expected = False
         self._awaiting_confirm = False
+        self._finish = False  # jawaban QA "Selesai" saat explorer bertanya
         # Dipanggil berkala dari worker thread selama menunggu (dijeda/ambil alih/konfirmasi).
         self.idle: Callable[[], None] | None = None
 
@@ -157,6 +158,27 @@ class RunControl:
                 raise InterventionError("Input manual hanya diterima saat ambil alih")
             self._inputs.append(dict(event))
             self._cond.notify_all()
+
+    def ask(self) -> None:
+        """Explorer bertanya ke QA (lanjutkan memetakan atau selesai): run berhenti sejenak sampai dijawab."""
+        with self._cond:
+            if self._state == "running":
+                self._state = "paused"
+            self._finish = False
+            self._cond.notify_all()
+
+    def finish_explore(self) -> None:
+        with self._cond:
+            self._require_alive()
+            self._finish = True
+            self._state = "running"
+            self._inputs.clear()
+            self._cond.notify_all()
+
+    def take_finish(self) -> bool:
+        with self._cond:
+            finish, self._finish = self._finish, False
+            return finish
 
     def has_hints(self) -> bool:
         with self._cond:

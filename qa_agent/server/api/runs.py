@@ -27,6 +27,7 @@ class RunIn(BaseModel):
     apk_uninstall: bool = False
     review_first: bool = False
     reuse_cases_from: int | None = None
+    ask_before_finish: bool = False
 
 
 class PlanCaseIn(BaseModel):
@@ -49,7 +50,7 @@ class PlanIn(BaseModel):
 
 class ControlIn(BaseModel):
     command: Literal["pause", "resume", "takeover", "release", "hint", "think_again", "skip", "stop", "end_case",
-                     "confirm_step", "input"]
+                     "confirm_step", "input", "finish_explore"]
     text: str | None = Field(default=None, max_length=2000)
     status: Literal["pass", "fail"] | None = None
     note: str | None = Field(default=None, max_length=2000)
@@ -160,6 +161,28 @@ def _plan_out(request: Request, run_id: int) -> dict:
     screens = [{"url": s.url, "page_name": s.page_name} for s in (app_map.screens_for(row.module or "") if app_map else [])]
     return {"editable": manager.plan_editable(run_id), "module": row.module,
             "cases": [c.model_dump() for c in manager.plan(run_id)], "screens": screens}
+
+
+@router.get("/runs/{run_id}/map")
+def run_map(run_id: int, request: Request) -> dict:
+    """Hasil penjelajahan: layar per modul (dengan screenshot) untuk halaman Hasil run Seluruh aplikasi."""
+    from pathlib import Path
+
+    from qa_agent.evidence import RunStore
+
+    row = deps.get_run_or_404(request, run_id)
+    app_map = RunStore(Path(row.folder)).read_app_map()
+    if app_map is None:
+        return {"modules": [], "screens": 0}
+    modules = []
+    for name in app_map.modules():
+        screens = [{
+            "page_name": s.page_name, "purpose": s.purpose, "url": s.url, "public": s.public, "depth": s.depth,
+            "forms": [f.get("name", "") for f in s.forms if isinstance(f, dict)], "actions": s.actions,
+            "screenshot_url": f"/api/runs/{run_id}/files/{s.screenshot}" if s.screenshot else None,
+        } for s in app_map.screens_for(name)]
+        modules.append({"name": name, "screens": screens})
+    return {"modules": modules, "screens": len(app_map.screens)}
 
 
 @router.get("/runs/{run_id}/plan")

@@ -75,3 +75,17 @@ def test_global_topic():
         return await asyncio.wait_for(q.get(), 2)
 
     assert asyncio.run(scenario())["status"] == "completed"
+
+
+def test_snapshot_tracks_explore_question():
+    from qa_agent.server.events import EventHub
+
+    hub = EventHub()
+    hub.publish(1, {"type": "run.status", "status": "running"})
+    hub.publish(1, {"type": "explore.ask", "screens": 5, "modules": 3})
+    hub.publish(1, {"type": "control.state", "state": "paused", "command": "explore.ask"})
+    assert hub.snapshot(1)["asking"] == {"screens": 5, "modules": 3}
+    hub.publish(1, {"type": "control.state", "state": "takeover", "command": "takeover"})
+    assert hub.snapshot(1)["asking"] is not None  # QA membuka menu sendiri dulu
+    hub.publish(1, {"type": "control.state", "state": "running", "command": "release"})
+    assert hub.snapshot(1)["asking"] is None

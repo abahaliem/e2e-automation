@@ -116,13 +116,13 @@ def _should_stop(rt: Runtime) -> Callable[[], bool]:
     return lambda: rt.stop() or control.state == "stopped"
 
 
-def make_explorer(rt: Runtime) -> Explorer:
+def make_explorer(rt: Runtime, *, ask_to_continue: bool = False) -> Explorer:
     limits = rt.cfg.limits
     return Explorer(driver=rt.driver, llm=rt.llm, guard=rt.guard, store=rt.store, auth=rt.auth,
                     start_url=rt.cfg.target.url, max_screens=limits.explore_max_screens,
                     max_depth=limits.explore_max_depth, max_minutes=limits.explore_max_minutes,
                     vision=rt.cfg.llm.vision, should_stop=_should_stop(rt), control=rt.control,
-                    on_event=rt.on_event)
+                    on_event=rt.on_event, ask_to_continue=ask_to_continue)
 
 
 def make_planner(rt: Runtime) -> DeepPlanner:

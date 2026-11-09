@@ -33,7 +33,7 @@ LLMFactory = Callable[[ProfileRow], LLMClient]
 RESUMABLE = ("paused", "interrupted")
 REVIEW_NOTE = "Menunggu review test case"
 COMMANDS = ("pause", "resume", "takeover", "release", "hint", "think_again", "skip", "stop", "end_case",
-            "confirm_step", "input")
+            "confirm_step", "input", "finish_explore")
 
 
 def friendly_error(e: Exception) -> str:
@@ -66,6 +66,7 @@ class RunRequest:
     apk_uninstall: bool = False
     created_by: str | None = None  # username yang memulai run (mode server)
     review_first: bool = False  # berhenti setelah test case disusun supaya QA bisa review/edit dulu
+    ask_before_finish: bool = False  # Seluruh aplikasi: tanya QA (lanjutkan memetakan / selesai) sebelum selesai
     reuse_cases_from: int | None = None  # regresi: pakai test case run lain (tanpa AI menyusun ulang)
 
 
@@ -139,6 +140,8 @@ class RunManager:
         options: dict[str, Any] = {"confirm_each_step": req.confirm_each_step}
         if req.created_by:
             options["created_by"] = req.created_by
+        if req.mode == "explore" and req.ask_before_finish:
+            options["ask_before_finish"] = True
         if app.platform == "android":
             if not (req.device_serial or "").strip():
                 raise ValueError("Pilih perangkat Android (HP atau emulator) untuk run ini")
@@ -445,7 +448,7 @@ class RunManager:
             self._install_apk(row, driver)
             self._sync_stream(active)
             if row.mode == "explore":
-                make_explorer(rt).run()
+                make_explorer(rt, ask_to_continue=bool(row.options.get("ask_before_finish"))).run()
             else:
                 self._run_deep(rt, rs, row, resume)
             if active.control.state == "stopped":
