@@ -83,7 +83,8 @@ def _resolve_start(planned: PlannedCase, screens: list[ScreenInfo]) -> str:
 
 
 class DeepPlanner:
-    def __init__(self, llm: LLMClient, *, data_prefix: str, max_tcs: int = 15) -> None:
+    def __init__(self, llm: LLMClient, *, data_prefix: str, max_tcs: int = 15, skills: str = "") -> None:
+        self.skills = skills  # bagian '## Skill QA' (tahap Menyusun test case & Menulis laporan)
         self.llm = llm
         self.data_prefix = data_prefix
         self.max_tcs = max_tcs
@@ -94,7 +95,7 @@ class DeepPlanner:
             available = ", ".join(app_map.modules()) or "(kosong)"
             raise PlanError(f"Modul '{module.strip()}' tidak ditemukan di hasil explore. Modul yang tersedia: {available}")
         screens = app_map.screens_for(canonical)
-        system = prompts.plan_system(canonical, self.max_tcs, self.data_prefix, bool(prd_text))
+        system = prompts.plan_system(canonical, self.max_tcs, self.data_prefix, bool(prd_text), skills=self.skills)
         first = prompts.plan_message(screens, prd_text)
         messages = [first]
         error = ""

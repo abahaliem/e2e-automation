@@ -58,6 +58,17 @@ CREATE TABLE IF NOT EXISTS runs (
   model TEXT NOT NULL DEFAULT '',
   options TEXT NOT NULL DEFAULT '{}'
 );
+CREATE TABLE IF NOT EXISTS skills (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL,
+  filename TEXT NOT NULL,
+  pages INTEGER NOT NULL DEFAULT 1,
+  chars INTEGER NOT NULL DEFAULT 0,
+  stages TEXT NOT NULL DEFAULT '[]',
+  app_ids TEXT NOT NULL DEFAULT '[]',
+  active INTEGER NOT NULL DEFAULT 1,
+  created_at TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS settings (
   key TEXT PRIMARY KEY,
   value TEXT NOT NULL
@@ -123,6 +134,18 @@ class RunRow(BaseModel):
     note: str = ""
     model: str = ""
     options: dict[str, Any] = Field(default_factory=dict)
+
+
+class SkillRow(BaseModel):
+    id: int
+    name: str
+    filename: str
+    pages: int = 1
+    chars: int = 0
+    stages: list[str] = Field(default_factory=list)
+    app_ids: list[int] = Field(default_factory=list)  # kosong = semua aplikasi
+    active: bool = True
+    created_at: str = ""
 
 
 class CaseRow(BaseModel):
@@ -197,6 +220,57 @@ class Store:
     @staticmethod
     def _profile(row: sqlite3.Row | None) -> ProfileRow | None:
         return None if row is None else ProfileRow.model_validate(dict(row))
+
+    # ---------- skill QA ----------
+    @staticmethod
+    def _skill(row: sqlite3.Row | None) -> SkillRow | None:
+        if row is None:
+            return None
+        d = dict(row)
+        d["stages"] = json.loads(d["stages"])
+        d["app_ids"] = json.loads(d["app_ids"])
+        d["active"] = bool(d["active"])
+        return SkillRow.model_validate(d)
+
+    def create_skill(self, *, name: str, filename: str, pages: int, chars: int, stages: list[str],
+                     app_ids: list[int] | None = None, active: bool = True) -> SkillRow:
+        cur = self._exec(
+            "INSERT INTO skills (name, filename, pages, chars, stages, app_ids, active, created_at) VALUES (?,?,?,?,?,?,?,?)",
+            (name, filename, pages, chars, json.dumps(stages), json.dumps(app_ids or []), int(active), now_iso()))
+        return self.get_skill(cur.lastrowid)  # type: ignore[return-value]
+
+    def get_skill(self, skill_id: int) -> SkillRow | None:
+        return self._skill(self._one("SELECT * FROM skills WHERE id=?", (skill_id,)))
+
+    def list_skills(self) -> list[SkillRow]:
+        return [self._skill(r) for r in self._all("SELECT * FROM skills ORDER BY id")]  # type: ignore[misc]
+
+    def update_skill(self, skill_id: int, **fields: Any) -> SkillRow:
+        allowed = {"name", "stages", "app_ids", "active"}
+        sets, params = [], []
+        for key, value in fields.items():
+            if key not in allowed:
+                raise ValueError(f"Kolom tidak dikenal: {key}")
+            if key in ("stages", "app_ids"):
+                value = json.dumps(value or [])
+            if key == "active":
+                value = int(bool(value))
+            sets.append(f"{key}=?")
+            params.append(value)
+        if sets:
+            self._exec(f"UPDATE skills SET {', '.join(sets)} WHERE id=?", (*params, skill_id))
+        skill = self.get_skill(skill_id)
+        if skill is None:
+            raise KeyError(skill_id)
+        return skill
+
+    def delete_skill(self, skill_id: int) -> None:
+        self._exec("DELETE FROM skills WHERE id=?", (skill_id,))
+
+    def skills_for(self, *, app_id: int, stages: tuple[str, ...]) -> list[SkillRow]:
+        """Skill aktif yang berlaku untuk aplikasi ini dan dipakai di salah satu tahap."""
+        return [s for s in self.list_skills()
+                if s.active and (not s.app_ids or app_id in s.app_ids) and set(s.stages) & set(stages)]
 
     # ---------- pengaturan umum (key-value) ----------
     def get_setting(self, key: str) -> str | None:
