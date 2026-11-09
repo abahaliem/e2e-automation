@@ -2,6 +2,8 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useState, type DragEvent, type FormEvent } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
+import { AndroidTarget } from "@/components/AndroidTarget";
+import { PlatformIcon } from "@/components/RunBits";
 import { Alert, Button, Field, PageHeader, Select, Switch } from "@/components/ui";
 import { ApiError, api } from "@/lib/api";
 import { cn } from "@/lib/cn";
@@ -16,6 +18,8 @@ export function RunNewPage() {
   const apps = useQuery({ queryKey: ["apps"], queryFn: api.listApps });
   const profiles = useQuery({ queryKey: ["profiles"], queryFn: api.listProfiles });
 
+  const [platform, setPlatform] = useState<"web" | "android">(params.get("platform") === "android" ? "android" : "web");
+  const [serial, setSerial] = useState("");
   const [url, setUrl] = useState("");
   const [appId, setAppId] = useState<number | null>(null);
   const [profileId, setProfileId] = useState<number | null>(null);
@@ -35,6 +39,21 @@ export function RunNewPage() {
     if (found) selectApp(found);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [apps.data]);
+
+  const androidPackage = url.startsWith("android://") ? url.slice("android://".length) : "";
+  const setAndroidPackage = (pkg: string) => {
+    setUrl(pkg ? `android://${pkg}` : "");
+    setAppId(null);
+    setAccountId(null);
+  };
+  const switchPlatform = (next: "web" | "android") => {
+    if (next === platform) return;
+    setPlatform(next);
+    setUrl("");
+    setAppId(null);
+    setAccountId(null);
+    setErrors({});
+  };
 
   const matched: App | null = useMemo(() => {
     if (appId !== null) return apps.data?.find((a) => a.id === appId) ?? null;
@@ -68,6 +87,7 @@ export function RunNewPage() {
   }, [explored, mode]);
 
   function selectApp(a: App) {
+    setPlatform(a.platform === "android" ? "android" : "web");
     setAppId(a.id);
     setUrl(a.url);
     setAccountId(null);
@@ -78,8 +98,8 @@ export function RunNewPage() {
     mutationFn: async () => {
       let app = matched;
       if (!app) {
-        const host = new URL(url.trim()).host;
-        app = await api.createApp({ name: host, url: url.trim(), allowed_domains: [], login_endpoints: [] });
+        const host = platform === "android" ? androidPackage : new URL(url.trim()).host;
+        app = await api.createApp({ name: host, platform, url: url.trim(), allowed_domains: [], login_endpoints: [] });
       }
       const body: RunInput = {
         app_id: app.id,
@@ -90,6 +110,7 @@ export function RunNewPage() {
         account_id: matched ? accountId : null,
         environment,
         confirm_each_step: confirmEach,
+        device_serial: platform === "android" ? serial : null,
       };
       return api.createRun(body);
     },
@@ -103,7 +124,9 @@ export function RunNewPage() {
   const submit = (e: FormEvent) => {
     e.preventDefault();
     const next: Record<string, string> = {};
-    if (!/^https?:\/\/\S+$/.test(url.trim())) next.url = "URL harus diawali http:// atau https://";
+    if (platform === "web" && !/^https?:\/\/\S+$/.test(url.trim())) next.url = "URL harus diawali http:// atau https://";
+    if (platform === "android" && !androidPackage) next.package = "Pilih aplikasi yang akan diuji";
+    if (platform === "android" && !serial) next._ = "Pilih perangkat Android yang siap dipakai";
     if (mode === "deep" && !module) next.module = "Pilih modul yang akan diuji";
     if (!profiles.data?.length) next._ = "Belum ada profil AI. Tambahkan di Pengaturan > Model AI.";
     setErrors(next);
@@ -131,22 +154,37 @@ export function RunNewPage() {
         title="Run baru"
         description="Pilih target, lalu agent menguji dan menyusun test case beserta evidence."
         actions={
-          <div className="inline-flex rounded-lg border border-ink-700 bg-ink-900 p-1 text-sm">
-            <span className="flex items-center gap-2 rounded-md bg-ink-800 px-4 py-1.5 text-fg">
-              <Globe />
-              Web
-            </span>
-            <span className="flex items-center gap-2 rounded-md px-4 py-1.5 text-fg-dim" title="Tersedia di sub-proyek Android">
-              <AndroidLogo />
-              Android
-              <span className="rounded bg-ink-800 px-1.5 text-[10px] uppercase">segera</span>
-            </span>
+          <div role="radiogroup" aria-label="Platform" className="inline-flex rounded-lg border border-ink-700 bg-ink-900 p-1 text-sm">
+            {(
+              [
+                ["web", "Web", Globe],
+                ["android", "Android", AndroidLogo],
+              ] as const
+            ).map(([value, label, Icon]) => (
+              <button
+                key={value}
+                type="button"
+                role="radio"
+                aria-checked={platform === value}
+                onClick={() => switchPlatform(value)}
+                className={cn(
+                  "flex items-center gap-2 rounded-md px-4 py-1.5",
+                  platform === value ? "bg-ink-800 text-fg" : "text-fg-muted hover:text-fg",
+                )}
+              >
+                <Icon />
+                {label}
+              </button>
+            ))}
           </div>
         }
       />
 
       <div className="grid grid-cols-[minmax(0,1fr)_340px] gap-10">
         <form onSubmit={submit} noValidate className="flex flex-col gap-7">
+          {platform === "android" ? (
+            <AndroidTarget serial={serial} onSerial={setSerial} pkg={androidPackage} onPackage={setAndroidPackage} error={errors.package} />
+          ) : (
           <Field
             label="URL aplikasi"
             htmlFor="run-url"
@@ -169,6 +207,7 @@ export function RunNewPage() {
               />
             </div>
           </Field>
+          )}
 
           <div className="grid grid-cols-3 gap-5">
             <Field label="Profil AI" htmlFor="run-profile">
@@ -230,7 +269,9 @@ export function RunNewPage() {
           </div>
           {environment === "production" && (
             <Alert tone="warning">
-              Mode production: agent tidak akan menyimpan, menghapus, atau mengirim data. Semua request pengubah data diblok di level jaringan, kecuali login.
+              {platform === "android"
+                ? "Mode production di Android: aksi bertanda simpan, hapus, kirim, bayar, dan sejenisnya diblok. Berbeda dengan web, request jaringan aplikasi tidak bisa dicegat, jadi tetap pakai akun dan data uji."
+                : "Mode production: agent tidak akan menyimpan, menghapus, atau mengirim data. Semua request pengubah data diblok di level jaringan, kecuali login."}
             </Alert>
           )}
 
@@ -311,7 +352,7 @@ export function RunNewPage() {
           {errors._ && <Alert tone="error">{errors._}</Alert>}
 
           <div className="flex items-center gap-3 pt-2">
-            <Button type="submit" variant="primary" size="lg" disabled={start.isPending}>
+            <Button type="submit" variant="primary" size="lg" disabled={start.isPending || (platform === "android" && !serial)}>
               <Play weight="fill" />
               {start.isPending ? "Menyiapkan..." : "Mulai run"}
             </Button>
@@ -330,10 +371,13 @@ export function RunNewPage() {
                   className={cn("block w-full p-4 text-left hover:bg-ink-850", matched?.id === a.id && "bg-accent-soft")}
                 >
                   <div className="flex items-center justify-between gap-2">
-                    <span className="font-medium">{a.name}</span>
-                    <span className="text-xs text-fg-dim">{a.last_run_at ? timeAgo(a.last_run_at) : "belum pernah"}</span>
+                    <span className="flex min-w-0 items-center gap-2 font-medium">
+                      <PlatformIcon platform={a.platform} />
+                      <span className="truncate">{a.name}</span>
+                    </span>
+                    <span className="shrink-0 text-xs text-fg-dim">{a.last_run_at ? timeAgo(a.last_run_at) : "belum pernah"}</span>
                   </div>
-                  <div className="mt-0.5 truncate font-mono text-xs text-fg-dim">{a.url.replace(/^https?:\/\//, "")}</div>
+                  <div className="mt-0.5 truncate font-mono text-xs text-fg-dim">{a.url.replace(/^(https?|android):\/\//, "")}</div>
                   <div className="mt-2 text-xs text-fg-muted">{a.explored ? "Modul sudah dipetakan" : "Belum dipetakan"}</div>
                 </button>
               ))}

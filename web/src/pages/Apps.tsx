@@ -1,8 +1,9 @@
-﻿import { DownloadSimple, FloppyDisk, Globe, Plus, Trash } from "@phosphor-icons/react";
+﻿import { DownloadSimple, FloppyDisk, Plus, Trash } from "@phosphor-icons/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState, type FormEvent } from "react";
 import { Link } from "react-router-dom";
 import { AccountsPanel } from "@/components/AccountsPanel";
+import { PlatformIcon } from "@/components/RunBits";
 import { Alert, Button, Card, EmptyState, Field, Input, PageHeader, Skeleton } from "@/components/ui";
 import { ApiError, api } from "@/lib/api";
 import { cn } from "@/lib/cn";
@@ -60,7 +61,7 @@ export function AppsPage() {
                 )}
               >
                 <div className="flex items-center gap-2 font-medium">
-                  <Globe className="text-accent" />
+                  <PlatformIcon platform={a.platform} />
                   {a.name}
                 </div>
                 <div className="mt-1 truncate font-mono text-xs text-fg-dim">{a.url}</div>
@@ -95,6 +96,7 @@ export function AppsPage() {
 
 function AppForm({ app, onSaved, onDeleted }: { app: App | null; onSaved: (a: App) => void; onDeleted?: () => void }) {
   const qc = useQueryClient();
+  const isAndroid = app?.platform === "android";
   const [name, setName] = useState(app?.name ?? "");
   const [url, setUrl] = useState(app?.url ?? "");
   const [domains, setDomains] = useState((app?.allowed_domains ?? []).join(", "));
@@ -131,7 +133,10 @@ function AppForm({ app, onSaved, onDeleted }: { app: App | null; onSaved: (a: Ap
     setNotice(null);
     const next: Record<string, string> = {};
     if (!name.trim()) next.name = "Wajib diisi";
-    if (!/^https?:\/\//.test(url.trim())) next.url = "URL harus diawali http:// atau https://";
+    if (isAndroid) {
+      if (!/^android:\/\/[A-Za-z]\w*(\.[A-Za-z_]\w*)+$/.test(url.trim()))
+        next.url = "Paket aplikasi Android tidak valid (contoh: android://com.perusahaan.aplikasi)";
+    } else if (!/^https?:\/\//.test(url.trim())) next.url = "URL harus diawali http:// atau https://";
     setErrors(next);
     if (Object.keys(next).length === 0) save.mutate();
   };
@@ -144,9 +149,18 @@ function AppForm({ app, onSaved, onDeleted }: { app: App | null; onSaved: (a: Ap
           <Field label="Nama aplikasi" htmlFor="app-name" error={errors.name}>
             <Input id="app-name" value={name} placeholder="Web HR" onChange={(e) => setName(e.target.value)} aria-invalid={!!errors.name} />
           </Field>
-          <Field label="URL aplikasi" htmlFor="app-url" error={errors.url}>
-            <Input id="app-url" className="font-mono" value={url} placeholder="https://hr-dev.kantor.local" onChange={(e) => setUrl(e.target.value)} aria-invalid={!!errors.url} />
+          <Field label={isAndroid ? "Paket aplikasi Android" : "URL aplikasi"} htmlFor="app-url" error={errors.url}>
+            <Input
+              id="app-url"
+              className="font-mono"
+              value={url}
+              placeholder={isAndroid ? "android://com.perusahaan.aplikasi" : "https://hr-dev.kantor.local"}
+              onChange={(e) => setUrl(e.target.value)}
+              aria-invalid={!!errors.url}
+            />
           </Field>
+          {!isAndroid && (
+          <>
           <Field
             label="Domain yang boleh dibuka"
             htmlFor="app-domains"
@@ -163,6 +177,8 @@ function AppForm({ app, onSaved, onDeleted }: { app: App | null; onSaved: (a: Ap
           >
             <Input id="app-login" className="font-mono" value={loginEndpoints} placeholder="/api/auth/login" onChange={(e) => setLoginEndpoints(e.target.value)} />
           </Field>
+          </>
+          )}
         </div>
         {errors._ && <Alert tone="error">{errors._}</Alert>}
         {notice && <Alert tone="success">{notice}</Alert>}

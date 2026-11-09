@@ -64,6 +64,17 @@ describe("LiveView", () => {
     expect(box.style.top).toBe("25%");
   });
 
+  it("frame potret (HP) dibatasi tingginya dan klik tetap ternormalisasi", () => {
+    const onInput = vi.fn();
+    render(<LiveView frame={{ url: "blob:p", width: 1080, height: 2400 }} overlay={null} takeover onInput={onInput} />);
+    const surface = screen.getByTestId("live-surface");
+    expect(surface.style.height).toContain("vh");
+    expect(surface.style.aspectRatio).toBe("1080 / 2400");
+    surface.getBoundingClientRect = () => rect(100, 0, 270, 600);
+    fireEvent.click(surface, { clientX: 100 + 135, clientY: 450 });
+    expect(onInput).toHaveBeenCalledWith({ kind: "click", x: 0.5, y: 0.75 });
+  });
+
   it("menampilkan placeholder sebelum frame pertama", () => {
     render(<LiveView frame={null} overlay={null} takeover={false} onInput={() => undefined} />);
     expect(screen.getByText(/Menunggu layar/)).toBeInTheDocument();

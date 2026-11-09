@@ -59,6 +59,7 @@ describe("Run baru", () => {
       account_id: 7,
       environment: "dev",
       confirm_each_step: true,
+      device_serial: null,
     });
     expect(await screen.findByTestId("navigated")).toBeInTheDocument();
   });
