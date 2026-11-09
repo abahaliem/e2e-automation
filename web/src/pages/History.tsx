@@ -1,9 +1,11 @@
-﻿import { useQuery } from "@tanstack/react-query";
+import { Trash } from "@phosphor-icons/react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { CountsInline, DocButtons, PlatformIcon } from "@/components/RunBits";
-import { Card, EmptyState, PageHeader, Select, Skeleton } from "@/components/ui";
+import { Alert, Button, Card, EmptyState, PageHeader, Select, Skeleton } from "@/components/ui";
 import { api } from "@/lib/api";
+import { useCan } from "@/lib/auth";
 import { cn } from "@/lib/cn";
 import { RUN_STATUS_LABEL, formatDateTime, scopeLabel } from "@/lib/format";
 
@@ -19,6 +21,9 @@ export function HistoryPage() {
   const [status, setStatus] = useState("");
   const [appId, setAppId] = useState<number | "">("");
   const apps = useQuery({ queryKey: ["apps"], queryFn: api.listApps });
+  const can = useCan();
+  const [deleted, setDeleted] = useState<number | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const runs = useQuery({
     queryKey: ["runs", "history", status, appId],
     queryFn: () => api.listRuns({ status: status || undefined, app_id: appId || undefined, limit: 200 }),
@@ -50,6 +55,8 @@ export function HistoryPage() {
           </>
         }
       />
+      {error && <Alert tone="error">{error}</Alert>}
+      {deleted && <Alert tone="success">Run #{deleted} dan evidence-nya dihapus.</Alert>}
       <Card className="overflow-hidden">
         {runs.isLoading ? (
           <div className="flex flex-col gap-2 p-4">
@@ -68,6 +75,7 @@ export function HistoryPage() {
                 <th className="px-4 py-2.5 font-medium">Mulai</th>
                 <th className="px-4 py-2.5 font-medium" />
                 <th className="px-4 py-2.5 text-right font-medium">Dokumen</th>
+                {can.write && <th className="px-4 py-2.5" />}
               </tr>
             </thead>
             <tbody className="divide-y divide-ink-700">
@@ -102,6 +110,9 @@ export function HistoryPage() {
                       )}
                     </td>
                     <td className="px-4 py-3">{!live && <DocButtons runId={r.id} />}</td>
+                    {can.write && (
+                      <td className="px-4 py-3 text-right">{!live && <DeleteRun runId={r.id} onDeleted={() => setDeleted(r.id)} onError={setError} />}</td>
+                    )}
                   </tr>
                 );
               })}
@@ -120,5 +131,39 @@ export function HistoryPage() {
         )}
       </Card>
     </main>
+  );
+}
+
+/** Hapus run (konfirmasi dua langkah): data, screenshot, dan dokumen run ikut terhapus permanen. */
+function DeleteRun({ runId, onDeleted, onError }: { runId: number; onDeleted: () => void; onError: (msg: string | null) => void }) {
+  const qc = useQueryClient();
+  const [confirm, setConfirm] = useState(false);
+  const remove = useMutation({
+    mutationFn: () => api.deleteRun(runId),
+    onSuccess: () => {
+      onError(null);
+      onDeleted();
+      qc.invalidateQueries({ queryKey: ["runs"] });
+      qc.invalidateQueries({ queryKey: ["stats"] });
+    },
+    onError: (e) => onError(e instanceof Error ? e.message : String(e)),
+  });
+  if (!confirm) {
+    return (
+      <Button size="sm" variant="ghost" aria-label={`Hapus run ${runId}`} onClick={() => setConfirm(true)}>
+        <Trash />
+      </Button>
+    );
+  }
+  return (
+    <span className="inline-flex items-center gap-1.5 text-xs">
+      <span className="text-fg-muted">Hapus permanen?</span>
+      <Button size="sm" variant="danger" disabled={remove.isPending} onClick={() => remove.mutate()}>
+        Hapus
+      </Button>
+      <Button size="sm" variant="ghost" onClick={() => setConfirm(false)}>
+        Batal
+      </Button>
+    </span>
   );
 }

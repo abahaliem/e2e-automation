@@ -8,6 +8,7 @@ import type { AuthStatus } from "@/lib/types";
 import { AppsPage } from "@/pages/Apps";
 import { DashboardPage } from "@/pages/Dashboard";
 import { DevicesPage } from "@/pages/Devices";
+import { GuidePage } from "@/pages/Guide";
 import { HistoryPage } from "@/pages/History";
 import { LoginPage } from "@/pages/Login";
 import { NotFoundPage } from "@/pages/NotFound";
@@ -64,6 +65,7 @@ function Shell() {
         <Route path="apps" element={<AppsPage />} />
         <Route path="devices" element={<DevicesPage />} />
         <Route path="settings" element={<SettingsPage />} />
+        <Route path="guide" element={<GuidePage />} />
         <Route path="*" element={<NotFoundPage />} />
       </Route>
       <Route path="runs/:runId" element={<RunLivePage />} />

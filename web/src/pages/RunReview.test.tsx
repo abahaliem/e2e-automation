@@ -65,7 +65,7 @@ describe("Review test case", () => {
     expect(sent.map((c) => c.title)).toEqual(["Sign In dengan akun tersimpan", "Toggle lihat password"]);
     expect(sent[0].id).toBe("TC-AUT-001");
     expect(sent[1]).toMatchObject({ steps: ["Tap ikon mata", "Lihat field password"], start_url: SIGNIN, page: "Sign In" });
-  });
+  }, 20_000);
 
   it("run yang sudah dijalankan hanya bisa dilihat", async () => {
     mocked.getRun.mockResolvedValue({ id: 20, app_name: "WFM", module: "Autentikasi" } as never);

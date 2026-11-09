@@ -131,6 +131,7 @@ export const api = {
   runState: (id: number) => get<Snapshot>(`/api/runs/${id}/state`),
   control: (id: number, body: ControlInput) => post<{ state: ControlState }>(`/api/runs/${id}/control`, body),
   resumeRun: (id: number) => post<Run>(`/api/runs/${id}/resume`),
+  deleteRun: (id: number) => del(`/api/runs/${id}`),
   getPlan: (id: number) => get<PlanResponse>(`/api/runs/${id}/plan`),
   savePlan: (id: number, cases: PlanCase[]) => request<PlanResponse>(`/api/runs/${id}/plan`, { method: "PUT", json: { cases } }),
 

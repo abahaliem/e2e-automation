@@ -1,4 +1,5 @@
 import {
+  BookOpenText,
   ClockCounterClockwise,
   DeviceMobile,
   Gauge,
@@ -29,6 +30,7 @@ const ITEMS: Item[] = [
   { to: "/apps", label: "Aplikasi", icon: SquaresFour, match: (p) => p.startsWith("/apps") },
   { to: "/devices", label: "Perangkat", icon: DeviceMobile, match: (p) => p.startsWith("/devices") },
   { to: "/settings", label: "Pengaturan", icon: GearSix, match: (p) => p.startsWith("/settings") },
+  { to: "/guide", label: "Panduan", icon: BookOpenText, match: (p) => p.startsWith("/guide") },
 ];
 
 export function Logo() {

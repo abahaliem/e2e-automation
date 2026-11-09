@@ -195,6 +195,25 @@ class RunManager:
         self._enqueue(run_id)
         return row
 
+    def delete(self, run_id: int) -> None:
+        """Hapus run dari riwayat beserta folder evidence-nya (hanya folder di dalam folder runs)."""
+        import shutil
+
+        row = self.store.get_run(run_id)
+        if row is None:
+            raise KeyError(run_id)
+        with self._lock:
+            if run_id in self._active or run_id in self._queue:
+                raise InterventionError("Run masih berjalan. Hentikan dulu sebelum dihapus")
+            self.store.delete_run(run_id)
+        folder = Path(row.folder).resolve()
+        try:
+            folder.relative_to(self.settings.runs_dir.resolve())
+        except ValueError:
+            return
+        if folder.is_dir():
+            shutil.rmtree(folder, ignore_errors=True)
+
     # ------------------------------------------------------------------ review test case
     def _reused_cases(self, row: RunRow) -> list[QaTestCase]:
         source_id = row.options.get("reuse_cases_from")
