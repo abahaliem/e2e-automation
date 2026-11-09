@@ -58,6 +58,10 @@ CREATE TABLE IF NOT EXISTS runs (
   model TEXT NOT NULL DEFAULT '',
   options TEXT NOT NULL DEFAULT '{}'
 );
+CREATE TABLE IF NOT EXISTS settings (
+  key TEXT PRIMARY KEY,
+  value TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS test_cases_index (
   run_id INTEGER NOT NULL REFERENCES runs(id) ON DELETE CASCADE,
   tc_id TEXT NOT NULL,
@@ -193,6 +197,18 @@ class Store:
     @staticmethod
     def _profile(row: sqlite3.Row | None) -> ProfileRow | None:
         return None if row is None else ProfileRow.model_validate(dict(row))
+
+    # ---------- pengaturan umum (key-value) ----------
+    def get_setting(self, key: str) -> str | None:
+        row = self._one("SELECT value FROM settings WHERE key=?", (key,))
+        return None if row is None else row["value"]
+
+    def set_setting(self, key: str, value: str | None) -> None:
+        if value is None:
+            self._exec("DELETE FROM settings WHERE key=?", (key,))
+        else:
+            self._exec("INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+                       (key, value))
 
     # ---------- apps ----------
     def create_app(self, *, name: str, platform: str = "web", url: str = "", allowed_domains: list[str] | None = None,

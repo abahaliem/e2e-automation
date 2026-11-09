@@ -20,7 +20,7 @@ from qa_agent.llm.base import LLMClient, LLMError
 from qa_agent.models import STATUSES, AppMap, RunMeta
 from qa_agent.orchestrator.auth import LoginFailed
 from qa_agent.orchestrator.deep import PlanError
-from qa_agent.report.build import build_reports
+from qa_agent.server.reporting import build_run_reports
 from qa_agent.report.excel import ReportLockedError
 from qa_agent.runtime import build_runtime, make_explorer, make_planner, make_runner
 from qa_agent.server.events import EventHub
@@ -439,7 +439,7 @@ class RunManager:
             meta.status, meta.finished_at, meta.note = status, now_iso(), note  # type: ignore[assignment]
             try:
                 rs.write_meta(meta)
-                build_reports(rs)
+                build_run_reports(rs, self.store, self.settings)
             except ReportLockedError as e:
                 note = f"{note} ({e})" if note else str(e)
             except Exception:
