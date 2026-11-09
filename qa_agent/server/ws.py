@@ -76,8 +76,20 @@ async def _serve(ws: WebSocket, topic, first: dict | None) -> None:
         hub.unsubscribe(topic, queue)
 
 
+def _authorized(ws: WebSocket) -> bool:
+    """Mode server: WebSocket memakai cookie sesi yang sama dengan REST."""
+    if not ws.app.state.settings.auth_required:
+        return True
+    from qa_agent.server.auth import COOKIE
+
+    return ws.app.state.store.session_user(ws.cookies.get(COOKIE)) is not None
+
+
 @router.websocket("/ws/runs/{run_id}")
 async def run_socket(ws: WebSocket, run_id: int) -> None:
+    if not _authorized(ws):
+        await ws.close(code=4401)
+        return
     if ws.app.state.store.get_run(run_id) is None:
         await ws.close(code=4404)
         return
@@ -87,5 +99,8 @@ async def run_socket(ws: WebSocket, run_id: int) -> None:
 
 @router.websocket("/ws/events")
 async def global_socket(ws: WebSocket) -> None:
+    if not _authorized(ws):
+        await ws.close(code=4401)
+        return
     await ws.accept()
     await _serve(ws, GLOBAL, None)

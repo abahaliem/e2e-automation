@@ -107,6 +107,20 @@ class Adb:
         return self._cmd("exec-out", command, timeout=timeout)
 
     # ---------- perangkat ----------
+    def connect(self, address: str) -> str:
+        """`adb connect host:port` (Wireless debugging / server). adb keluar 0 walau gagal, jadi cek teksnya."""
+        out = self._cmd("connect", address, timeout=20).decode("utf-8", "replace").strip()
+        if not out.lower().startswith(("connected", "already connected")):
+            raise AdbError(out or f"Tidak bisa tersambung ke {address}")
+        return out
+
+    def pair(self, address: str, code: str) -> str:
+        """`adb pair host:port kode` (Android 11+, kode dari menu Wireless debugging)."""
+        out = self._cmd("pair", address, code, timeout=30).decode("utf-8", "replace").strip()
+        if "success" not in out.lower():
+            raise AdbError(out or f"Gagal memasangkan {address}")
+        return out
+
     def devices(self) -> list[DeviceInfo]:
         out = self._cmd("devices", "-l", timeout=15).decode("utf-8", "replace")
         devices: list[DeviceInfo] = []

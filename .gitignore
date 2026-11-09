@@ -1,5 +1,6 @@
 # Rahasia & sesi login
 .env
+.env.server
 .qa-agent/
 
 # Hasil run (berisi screenshot aplikasi)
@@ -20,3 +21,4 @@ web/*.tsbuildinfo
 qa_agent/server/static/*
 !qa_agent/server/static/.gitkeep
 web/src/tw-candidates.css
+.claude

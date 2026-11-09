@@ -1,0 +1,38 @@
+# QA Agent di server: dashboard (wajib login) + Caddy untuk HTTPS.
+# Panduan lengkap: docs/deploy.md
+services:
+  qa-agent:
+    build: .
+    restart: unless-stopped
+    env_file: .env.server          # berisi QA_AGENT_MASTER_KEY (jangan di-commit)
+    environment:
+      QA_AGENT_AUTH: "1"
+      QA_AGENT_SECURE_COOKIES: "1"
+      QA_AGENT_SECRET_BACKEND: file
+    volumes:
+      - qa-data:/data
+    shm_size: "1gb"                # Chromium butuh /dev/shm yang cukup
+    expose:
+      - "8787"
+    # HP Android lewat USB ke server (opsional). Tanpa ini, pakai "Sambungkan lewat jaringan".
+    # devices:
+    #   - /dev/bus/usb:/dev/bus/usb
+
+  caddy:
+    image: caddy:2.8
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    env_file: .env.server          # QA_AGENT_DOMAIN
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      - qa-agent
+
+volumes:
+  qa-data:
+  caddy-data:
+  caddy-config:

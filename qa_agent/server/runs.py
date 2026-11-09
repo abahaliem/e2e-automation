@@ -63,6 +63,7 @@ class RunRequest:
     apk_file: str | None = None  # nama file di <data>/apks (hasil unggah), dipasang saat run dimulai
     apk_grant: bool = True
     apk_uninstall: bool = False
+    created_by: str | None = None  # username yang memulai run (mode server)
 
 
 @dataclass
@@ -133,6 +134,8 @@ class RunManager:
             if account is None or account.app_id != app.id:
                 raise ValueError("Akun test tidak ditemukan untuk aplikasi ini")
         options: dict[str, Any] = {"confirm_each_step": req.confirm_each_step}
+        if req.created_by:
+            options["created_by"] = req.created_by
         if app.platform == "android":
             if not (req.device_serial or "").strip():
                 raise ValueError("Pilih perangkat Android (HP atau emulator) untuk run ini")

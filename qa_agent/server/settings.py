@@ -17,6 +17,8 @@ class ServerSettings:
     host: str = "127.0.0.1"
     port: int = 8787
     max_parallel: int = 2
+    auth_required: bool = False  # mode server: wajib login (sub-proyek 4)
+    secure_cookies: bool = False  # cookie sesi hanya lewat HTTPS (di belakang reverse proxy)
 
     @property
     def db_path(self) -> Path:

@@ -40,6 +40,33 @@ export interface App {
   accounts: number;
 }
 
+export type SkillStage = "plan" | "execute" | "judge" | "report";
+
+export interface Skill {
+  id: number;
+  name: string;
+  filename: string;
+  pages: number;
+  chars: number;
+  stages: SkillStage[];
+  stage_labels: string[];
+  app_ids: number[];
+  app_names: string[];
+  active: boolean;
+}
+
+export interface SkillsResponse {
+  builtin: { name: string; description: string; topics: string[]; content: string };
+  skills: Skill[];
+  stages: Record<SkillStage, string>;
+  capacity_percent: number;
+}
+
+export interface ReportSettings {
+  company_name: string;
+  excel_template: { name: string; columns: { header: string; maps_to: string | null }[] } | null;
+}
+
 export interface Device {
   serial: string;
   state: "device" | "unauthorized" | "offline" | string;
@@ -107,6 +134,8 @@ export interface Run {
   model: string;
   confirm_each_step: boolean;
   device_serial?: string | null;
+  /** username yang memulai run (mode server) */
+  created_by?: string | null;
   active: boolean;
   control_state: ControlState | null;
 }
@@ -274,3 +303,10 @@ export interface Frame {
   width: number;
   height: number;
 }
+
+
+// ---------- login & peran (mode server) ----------
+export type Role = "admin" | "qa" | "viewer";
+export type AuthUser = { id: number; username: string; role: Role };
+export type AuthStatus = { auth_required: boolean; user: AuthUser | null };
+export type UserRow = AuthUser & { active: boolean; created_at: string; last_login: string | null };

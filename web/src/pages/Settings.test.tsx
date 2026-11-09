@@ -103,10 +103,10 @@ describe("Pengaturan > Model AI", () => {
     expect((screen.getByLabelText("Model") as HTMLInputElement).value).toBe("deepseek/deepseek-v4-flash");
   });
 
-  it("tab Skill QA nonaktif (segera)", async () => {
+  it("lima tab sesuai mockup 04", async () => {
     mocked.listProfiles.mockResolvedValue([]);
     renderWithProviders(<SettingsPage />);
-    const tab = await screen.findByRole("tab", { name: /Skill QA/ });
-    expect(tab).toBeDisabled();
-  });
-});
+    const tabs = await screen.findAllByRole("tab");
+    expect(tabs.map((t) => t.textContent)).toEqual(["Model AI", "Skill QA", "Akun test", "Keamanan", "Laporan"]);
+    expect(tabs.every((t) => !(t as HTMLButtonElement).disabled)).toBe(true);
+  });});

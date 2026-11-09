@@ -1,4 +1,4 @@
-﻿import {
+import {
   ArrowsClockwise,
   CheckCircle,
   FloppyDisk,
@@ -13,24 +13,45 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState, type FormEvent } from "react";
 import { AccountsPanel } from "@/components/AccountsPanel";
+import { useSearchParams } from "react-router-dom";
+import { ReportTab } from "./SettingsReport";
+import { SecurityTab } from "./SettingsSecurity";
+import { SkillsTab } from "./SettingsSkills";
 import { Alert, Button, Card, EmptyState, Field, Input, PageHeader, Select, Skeleton, Switch } from "@/components/ui";
 import { ApiError, api } from "@/lib/api";
+import { useCan } from "@/lib/auth";
 import { cn } from "@/lib/cn";
 import type { Profile, ProfileInput } from "@/lib/types";
 
-type Tab = "ai" | "skill" | "accounts";
+type Tab = "ai" | "skill" | "accounts" | "security" | "report";
 const BASE_URL_REQUIRED = "Base URL wajib diisi untuk endpoint OpenAI-compatible";
 
 export function SettingsPage() {
-  const [tab, setTab] = useState<Tab>("ai");
+  const can = useCan();
+  const [params, setParams] = useSearchParams();
+  const initial = (params.get("tab") as Tab | null) ?? "ai";
+  const [tab, setTabState] = useState<Tab>(["ai", "skill", "accounts", "security", "report"].includes(initial) ? initial : "ai");
+  const setTab = (t: Tab) => {
+    setTabState(t);
+    setParams(t === "ai" ? {} : { tab: t }, { replace: true });
+  };
+  // Mockup 04: Model AI, Skill QA, Akun test, Keamanan, Laporan
   const tabs: { id: Tab; label: string; disabled?: boolean }[] = [
     { id: "ai", label: "Model AI" },
-    { id: "skill", label: "Skill QA", disabled: true },
+    { id: "skill", label: "Skill QA" },
     { id: "accounts", label: "Akun test" },
+    { id: "security", label: "Keamanan" },
+    { id: "report", label: "Laporan" },
   ];
   return (
     <main className="flex flex-col gap-6 px-10 py-8">
       <PageHeader title="Pengaturan" />
+      {!can.admin && (
+        <Alert tone="info">
+          Anda masuk sebagai {can.role === "qa" ? "QA" : "Viewer"}. Hanya Admin yang bisa mengubah Model AI, Skill QA, dan Laporan
+          {can.role === "qa" ? "; akun test tetap bisa Anda kelola." : "."}
+        </Alert>
+      )}
       <div role="tablist" aria-label="Bagian pengaturan" className="-mt-2 flex gap-6 border-b border-ink-700 text-sm">
         {tabs.map((t) => (
           <button
@@ -52,7 +73,10 @@ export function SettingsPage() {
         ))}
       </div>
       {tab === "ai" && <ModelAiTab />}
+      {tab === "skill" && <SkillsTab />}
       {tab === "accounts" && <AccountsTab />}
+      {tab === "security" && <SecurityTab />}
+      {tab === "report" && <ReportTab />}
     </main>
   );
 }
@@ -139,6 +163,7 @@ function ProfileForm({
   onDeleted: () => void;
 }) {
   const qc = useQueryClient();
+  const { server } = useCan();
   const [form, setForm] = useState<ProfileInput>(() => ({
     name: profile?.name ?? "",
     provider: profile?.provider ?? "openai_compatible",
@@ -313,7 +338,9 @@ function ProfileForm({
           )}
           <p className="flex items-center gap-1.5 text-xs text-fg-muted">
             <LockSimple />
-            Disimpan di Windows Credential Manager laptop ini. Tidak pernah masuk ke laporan atau Git.
+            {server
+              ? "Disimpan terenkripsi di server. Tidak pernah masuk ke laporan atau Git."
+              : "Disimpan di Windows Credential Manager laptop ini. Tidak pernah masuk ke laporan atau Git."}
           </p>
         </div>
 

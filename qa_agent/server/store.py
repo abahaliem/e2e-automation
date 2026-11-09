@@ -69,6 +69,23 @@ CREATE TABLE IF NOT EXISTS skills (
   active INTEGER NOT NULL DEFAULT 1,
   created_at TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS users (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  username TEXT NOT NULL UNIQUE COLLATE NOCASE,
+  password_hash TEXT NOT NULL,
+  role TEXT NOT NULL DEFAULT 'qa',
+  active INTEGER NOT NULL DEFAULT 1,
+  created_at TEXT NOT NULL,
+  last_login TEXT
+);
+CREATE TABLE IF NOT EXISTS sessions (
+  token_hash TEXT PRIMARY KEY,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  created_at REAL NOT NULL,
+  last_seen REAL NOT NULL,
+  expires_at REAL NOT NULL,
+  ttl REAL NOT NULL
+);
 CREATE TABLE IF NOT EXISTS settings (
   key TEXT PRIMARY KEY,
   value TEXT NOT NULL
@@ -134,6 +151,16 @@ class RunRow(BaseModel):
     note: str = ""
     model: str = ""
     options: dict[str, Any] = Field(default_factory=dict)
+
+
+class UserRow(BaseModel):
+    id: int
+    username: str
+    role: str
+    active: bool = True
+    created_at: str = ""
+    last_login: str | None = None
+    password_hash: str = Field(default="", exclude=True)  # tidak pernah ikut ke JSON
 
 
 class SkillRow(BaseModel):
@@ -220,6 +247,95 @@ class Store:
     @staticmethod
     def _profile(row: sqlite3.Row | None) -> ProfileRow | None:
         return None if row is None else ProfileRow.model_validate(dict(row))
+
+    # ---------- pengguna & sesi (mode server) ----------
+    @staticmethod
+    def _user(row: sqlite3.Row | None) -> UserRow | None:
+        if row is None:
+            return None
+        d = dict(row)
+        d["active"] = bool(d["active"])
+        return UserRow.model_validate(d)
+
+    def create_user(self, *, username: str, password_hash: str, role: str) -> UserRow:
+        try:
+            cur = self._exec("INSERT INTO users (username, password_hash, role, created_at) VALUES (?,?,?,?)",
+                             (username.strip(), password_hash, role, now_iso()))
+        except sqlite3.IntegrityError as e:
+            raise ValueError(f"Username '{username}' sudah dipakai") from e
+        return self.get_user(cur.lastrowid)  # type: ignore[return-value]
+
+    def get_user(self, user_id: int) -> UserRow | None:
+        return self._user(self._one("SELECT * FROM users WHERE id=?", (user_id,)))
+
+    def get_user_by_name(self, username: str) -> UserRow | None:
+        return self._user(self._one("SELECT * FROM users WHERE username=? COLLATE NOCASE", (username.strip(),)))
+
+    def list_users(self) -> list[UserRow]:
+        return [self._user(r) for r in self._all("SELECT * FROM users ORDER BY id")]  # type: ignore[misc]
+
+    def update_user(self, user_id: int, **fields: Any) -> UserRow:
+        allowed = {"role", "active", "password_hash", "last_login"}
+        sets, params = [], []
+        for key, value in fields.items():
+            if key not in allowed:
+                raise ValueError(f"Kolom tidak dikenal: {key}")
+            sets.append(f"{key}=?")
+            params.append(int(bool(value)) if key == "active" else value)
+        if sets:
+            self._exec(f"UPDATE users SET {', '.join(sets)} WHERE id=?", (*params, user_id))
+        user = self.get_user(user_id)
+        if user is None:
+            raise KeyError(user_id)
+        return user
+
+    def delete_user(self, user_id: int) -> None:
+        self._exec("DELETE FROM sessions WHERE user_id=?", (user_id,))
+        self._exec("DELETE FROM users WHERE id=?", (user_id,))
+
+    def count_active_admins(self) -> int:
+        return self._one("SELECT COUNT(*) AS n FROM users WHERE role='admin' AND active=1")["n"]  # type: ignore[index]
+
+    def create_session(self, user_id: int, *, ttl_seconds: float, max_age_seconds: float) -> str:
+        import hashlib
+        import secrets as pysecrets
+        import time
+
+        token = pysecrets.token_urlsafe(32)
+        now = time.time()
+        self._exec("INSERT INTO sessions (token_hash, user_id, created_at, last_seen, expires_at, ttl) VALUES (?,?,?,?,?,?)",
+                   (hashlib.sha256(token.encode()).hexdigest(), user_id, now, now, now + max_age_seconds, ttl_seconds))
+        return token
+
+    def session_user(self, token: str | None) -> UserRow | None:
+        """Pengguna dari token sesi; sesi kedaluwarsa (tidak aktif / melewati umur maksimal) dihapus."""
+        import hashlib
+        import time
+
+        if not token:
+            return None
+        key = hashlib.sha256(token.encode()).hexdigest()
+        row = self._one("SELECT * FROM sessions WHERE token_hash=?", (key,))
+        if row is None:
+            return None
+        now = time.time()
+        if now > row["expires_at"] or now - row["last_seen"] > row["ttl"]:
+            self._exec("DELETE FROM sessions WHERE token_hash=?", (key,))
+            return None
+        user = self.get_user(row["user_id"])
+        if user is None or not user.active:
+            return None
+        self._exec("UPDATE sessions SET last_seen=? WHERE token_hash=?", (now, key))
+        return user
+
+    def delete_session(self, token: str | None) -> None:
+        import hashlib
+
+        if token:
+            self._exec("DELETE FROM sessions WHERE token_hash=?", (hashlib.sha256(token.encode()).hexdigest(),))
+
+    def delete_user_sessions(self, user_id: int) -> None:
+        self._exec("DELETE FROM sessions WHERE user_id=?", (user_id,))
 
     # ---------- skill QA ----------
     @staticmethod
