@@ -58,6 +58,7 @@ class RunRequest:
     account_id: int | None = None
     environment: Literal["dev", "production"] = "dev"
     confirm_each_step: bool = False
+    device_serial: str | None = None
 
 
 @dataclass
@@ -128,6 +129,10 @@ class RunManager:
             if account is None or account.app_id != app.id:
                 raise ValueError("Akun test tidak ditemukan untuk aplikasi ini")
         options: dict[str, Any] = {"confirm_each_step": req.confirm_each_step}
+        if app.platform == "android":
+            if not (req.device_serial or "").strip():
+                raise ValueError("Pilih perangkat Android (HP atau emulator) untuk run ini")
+            options["device_serial"] = req.device_serial.strip()  # type: ignore[union-attr]
         module = None
         if req.mode == "deep":
             explore = self.store.latest_completed_explore(app.id)
@@ -141,7 +146,7 @@ class RunManager:
             options["source_run"] = explore.id
             if req.prd_text:
                 options["prd_text"] = req.prd_text
-        label = module or urlsplit(app.url).netloc or app.name
+        label = module or urlsplit(app.url).netloc or app.name  # android://paket → nama paket
         folder = RunStore.create(self.settings.runs_dir, req.mode, label).root
         row = self.store.create_run(app_id=app.id, mode=req.mode, module=module, environment=req.environment,
                                     folder=str(folder), profile_id=profile.id, account_id=req.account_id,
@@ -201,19 +206,22 @@ class RunManager:
                 self._queue.append(run_id)
         self._dispatch()
 
-    def _busy_apps(self) -> set[int]:
-        apps = set()
+    def _busy(self) -> tuple[set[int], set[str]]:
+        apps: set[int] = set()
+        devices: set[str] = set()
         for a in self._active.values():
             row = self.store.get_run(a.run_id)
             if row is not None:
                 apps.add(row.app_id)
-        return apps
+                if row.options.get("device_serial"):
+                    devices.add(row.options["device_serial"])
+        return apps, devices
 
     def _dispatch(self) -> None:
         with self._lock:
             if self._stopping:
                 return
-            busy = self._busy_apps()
+            busy, busy_devices = self._busy()
             for run_id in list(self._queue):
                 if len(self._active) >= self.settings.max_parallel:
                     break
@@ -221,10 +229,13 @@ class RunManager:
                 if row is None:
                     self._queue.remove(run_id)
                     continue
-                if row.app_id in busy:
-                    continue  # satu aplikasi satu run (berbagi sesi login)
+                device = row.options.get("device_serial")
+                if row.app_id in busy or (device and device in busy_devices):
+                    continue  # satu aplikasi / satu HP hanya satu run
                 self._queue.remove(run_id)
                 busy.add(row.app_id)
+                if device:
+                    busy_devices.add(device)
                 active = _Active(run_id=run_id,
                                  control=RunControl(confirm_each_step=bool(row.options.get("confirm_each_step"))))
                 active.thread = threading.Thread(target=self._worker, args=(active,), name=f"run-{run_id}", daemon=True)
@@ -279,7 +290,7 @@ class RunManager:
         assert app is not None
         try:
             return Config.model_validate({
-                "target": {"url": app.url, "allowed_domains": app.allowed_domains,
+                "target": {"platform": app.platform, "url": app.url, "allowed_domains": app.allowed_domains,
                            "login_endpoints": app.login_endpoints},
                 "environment": row.environment,
                 "accounts": [{"role": role, "username_env": "-", "password_env": "-"}],
@@ -331,7 +342,7 @@ class RunManager:
             auth_state = self.settings.auth_dir / f"app-{row.app_id}-{slugify(creds.role)}.json"
             rt = build_runtime(cfg, rs, self.settings.data_dir, environment=row.environment, llm=llm,
                                credentials=creds, api_key=api_key, control=active.control, on_event=on_event,
-                               auth_state=auth_state)
+                               auth_state=auth_state, device_serial=row.options.get("device_serial"))
             if meta is None:
                 meta = RunMeta(mode=row.mode, target=cfg.target.url, environment=row.environment,  # type: ignore[arg-type]
                                model=profile.model, started_at=now_iso(), module=row.module)
@@ -375,6 +386,9 @@ class RunManager:
             raise RunPaused("Hasil explore sumber tidak ditemukan. Jalankan Seluruh aplikasi lagi")
         module = app_map.find_module(row.module or "") or (row.module or "")
         rs.write_app_map(app_map)
+        register = getattr(rt.driver, "register_paths", None)
+        if register is not None:  # Android: jalur tap ke setiap layar hasil explore
+            register({s.url: s.nav_path for s in app_map.screens})
         cases = rs.read_testcases() if resume else []
         if not cases:
             cases = make_planner(rt).plan(app_map, module, row.options.get("prd_text"))

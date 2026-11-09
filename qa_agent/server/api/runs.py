@@ -21,6 +21,7 @@ class RunIn(BaseModel):
     account_id: int | None = None
     environment: Literal["dev", "production"] = "dev"
     confirm_each_step: bool = False
+    device_serial: str | None = Field(default=None, max_length=120)
 
 
 class ControlIn(BaseModel):
@@ -41,6 +42,7 @@ def run_out(request: Request, row: RunRow) -> dict:
     data["platform"] = app.platform if app else "web"
     data["url"] = app.url if app else ""
     data["confirm_each_step"] = bool(row.options.get("confirm_each_step"))
+    data["device_serial"] = row.options.get("device_serial")
     data["active"] = manager.is_active(row.id)
     data["control_state"] = manager.control(row.id).state if data["active"] else None
     profile = store.get_profile(row.profile_id) if row.profile_id else None

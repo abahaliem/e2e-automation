@@ -54,3 +54,15 @@ def configure_playwright_browsers(settings: "ServerSettings") -> str | None:
         os.environ["PLAYWRIGHT_BROWSERS_PATH"] = str(d)
         return str(d)
     return None
+
+
+def configure_adb(settings: "ServerSettings") -> str | None:
+    r"""Bila ada `<data>\platform-tools\adb(.exe)`, tambahkan ke PATH supaya adb ditemukan tanpa instalasi sistem."""
+    folder = settings.data_dir / "platform-tools"
+    exe = folder / ("adb.exe" if os.name == "nt" else "adb")
+    if not exe.is_file():
+        return None
+    path = os.environ.get("PATH", "")
+    if str(folder) not in path.split(os.pathsep):
+        os.environ["PATH"] = str(folder) + os.pathsep + path
+    return str(exe)
