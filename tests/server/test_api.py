@@ -220,6 +220,21 @@ def test_spa_fallback(ctx):
     assert client.get("/api/tidak-ada").status_code == 404
 
 
+def test_index_not_cached_but_hashed_assets_are(ctx, tmp_path, monkeypatch):
+    """Setelah update, browser langsung memakai dashboard baru (index.html no-cache)."""
+    client, *_ = ctx
+    from qa_agent.server import app as app_module
+
+    static = tmp_path / "static"
+    (static / "assets").mkdir(parents=True)
+    (static / "index.html").write_text("<html></html>", encoding="utf-8")
+    (static / "assets" / "index-abc123.js").write_text("console.log(1)", encoding="utf-8")
+    monkeypatch.setattr(app_module, "STATIC_DIR", static)
+    assert client.get("/runs/1/result").headers["cache-control"] == "no-cache"
+    assert client.get("/").headers["cache-control"] == "no-cache"
+    assert "immutable" in client.get("/assets/index-abc123.js").headers["cache-control"]
+
+
 @pytest.mark.browser
 def test_live_run_control_409_and_pause(ctx, demo):
     client, secrets, brains, settings, _ = ctx
