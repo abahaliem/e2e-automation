@@ -10,7 +10,8 @@ from pydantic import BaseModel, Field
 
 from qa_agent.evidence import RunStore, slugify
 from qa_agent.models import STATUSES, QaTestCase
-from qa_agent.report.build import apply_review, build_reports, import_review
+from qa_agent.report.build import apply_review, import_review
+from qa_agent.server.reporting import build_run_reports, company_name
 from qa_agent.report.excel import ReportLockedError
 from qa_agent.report.humanize import humanize, signal_text
 from qa_agent.server.api import deps
@@ -98,7 +99,7 @@ def review_case(run_id: int, tc_id: str, body: ReviewIn, request: Request) -> di
     # 3) Bangun ulang laporan tanpa mengimpor Excel lagi.
     warning = None
     try:
-        build_reports(rs, import_excel=False)
+        build_run_reports(rs, deps.store(request), deps.settings(request), import_excel=False)
     except ReportLockedError:
         warning = LOCKED_WARNING
     cases = _cases(rs)
@@ -143,12 +144,13 @@ def download(run_id: int, kind: str, request: Request) -> FileResponse:
     rs = _run_store(request, run_id)
     if not rs.meta_path.exists():
         raise deps.not_found("Laporan")
+    store, settings = deps.store(request), deps.settings(request)
     if not rs.report_xlsx.exists() or not rs.report_html.exists():
         try:
-            build_reports(rs)
+            build_run_reports(rs, store, settings)
         except ReportLockedError as e:
             raise HTTPException(status_code=409, detail=str(e))
-    app = deps.store(request).get_app(row.app_id)
+    app = store.get_app(row.app_id)
     base = f"hasil-pengujian-{slugify(app.name if app else 'aplikasi')}-{slugify(row.module or row.mode)}-run{row.id}"
     if kind == "xlsx":
         return FileResponse(rs.report_xlsx, filename=f"{base}.xlsx",
@@ -156,8 +158,10 @@ def download(run_id: int, kind: str, request: Request) -> FileResponse:
     if kind == "html":
         return FileResponse(rs.report_html, filename=f"{base}.html", media_type="text/html")
     pdf = rs.root / "report.pdf"
-    if not pdf.exists() or pdf.stat().st_mtime < rs.report_html.stat().st_mtime:
-        from qa_agent.report.pdf import html_to_pdf
+    sources = [p for p in (rs.report_html, rs.review_path, rs.testcases_path) if p.exists()]
+    stale = not pdf.exists() or any(p.stat().st_mtime > pdf.stat().st_mtime for p in sources)
+    if stale:  # dokumen PDF sesuai mockup 08 (bukan cetakan report.html)
+        from qa_agent.report.pdf_doc import write_report_pdf
 
-        html_to_pdf(rs.report_html, pdf)
+        write_report_pdf(rs, pdf, app_name=app.name if app else "", run_id=row.id, company=company_name(store))
     return FileResponse(pdf, filename=f"{base}.pdf", media_type="application/pdf")

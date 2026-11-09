@@ -108,9 +108,9 @@ def create_app(settings: ServerSettings, *, secrets: SecretStore | None = None,
                       f"({exc})"})
 
     from qa_agent.server import ws
-    from qa_agent.server.api import apps, devices, profiles, results, runs, stats
+    from qa_agent.server.api import apps, devices, profiles, report_settings, results, runs, stats
 
-    for module in (apps, profiles, runs, results, stats, devices, ws):
+    for module in (apps, profiles, runs, results, stats, devices, report_settings, ws):
         app.include_router(module.router)
 
     @app.api_route("/api/{rest:path}", methods=["GET", "POST", "PATCH", "DELETE", "PUT"], include_in_schema=False)
