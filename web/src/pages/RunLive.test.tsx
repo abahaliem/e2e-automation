@@ -95,6 +95,22 @@ describe("Run berjalan", () => {
     expect(screen.queryByRole("button", { name: /Jalankan langkah/ })).not.toBeInTheDocument();
   });
 
+  it("run Android memakai bingkai HP, bukan bingkai browser", async () => {
+    setStream(snapshot());
+    mocked.getRun.mockResolvedValue({ ...run, platform: "android", url: "android://com.biznet.wfm.dev", device_serial: "202505G18414" } as never);
+    renderWithProviders(<RunLivePage />, { path: "/runs/9", route: "/runs/:runId" });
+    expect(await screen.findByTestId("phone-frame")).toBeInTheDocument();
+    expect(screen.queryByText("android://com.biznet.wfm.dev")).not.toBeInTheDocument();
+    expect(screen.getByText(/202505G18414/)).toBeInTheDocument();
+  });
+
+  it("run web tetap memakai bingkai browser", async () => {
+    setStream(snapshot());
+    renderWithProviders(<RunLivePage />, { path: "/runs/9", route: "/runs/:runId" });
+    expect(await screen.findByTestId("browser-frame")).toBeInTheDocument();
+    expect(screen.queryByTestId("phone-frame")).not.toBeInTheDocument();
+  });
+
   it("status Dijeda ditampilkan", async () => {
     setStream(snapshot({ control_state: "paused" }));
     renderWithProviders(<RunLivePage />, { path: "/runs/9", route: "/runs/:runId" });

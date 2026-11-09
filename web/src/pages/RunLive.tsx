@@ -6,6 +6,7 @@
   Circle,
   CircleNotch,
   CursorClick,
+  DeviceMobileCamera,
   GlobeSimple,
   HandPointing,
   MinusCircle,
@@ -282,16 +283,41 @@ export function RunLivePage() {
         </aside>
 
         <section className="flex min-h-0 flex-col gap-3 overflow-y-auto p-5">
-          <div className="flex flex-col overflow-hidden rounded-xl border border-ink-700 bg-ink-900">
-            <div className="flex h-10 items-center gap-3 border-b border-ink-700 bg-ink-850 px-3">
-              <GlobeSimple className="text-fg-dim" />
-              <div className="flex h-6 flex-1 items-center truncate rounded-md border border-ink-700 bg-ink-950 px-3 font-mono text-xs text-fg-muted">
-                {r?.url.replace(/^https?:\/\//, "") ?? ""}
+          {r?.platform === "android" ? (
+            <div className="flex flex-col items-center gap-3">
+              <div className="flex w-full items-center justify-between text-sm">
+                <span className="flex min-w-0 items-center gap-2 text-fg-muted">
+                  <DeviceMobileCamera className="shrink-0 text-lg text-pass" />
+                  <span className="truncate">
+                    Layar HP <span className="font-mono text-xs text-fg-dim">{r.device_serial}</span>
+                  </span>
+                </span>
+                {active && <span className="rounded-md bg-fail/15 px-2 py-0.5 text-xs font-medium text-fail">LIVE</span>}
               </div>
-              {active && <span className="rounded-md bg-fail/15 px-2 py-0.5 text-xs font-medium text-fail">LIVE</span>}
+              <div data-testid="phone-frame" className="rounded-[32px] border border-ink-600 bg-ink-900 p-2.5 shadow-[0_8px_30px_rgba(30,40,60,0.08)]">
+                <div className="overflow-hidden rounded-[24px] border border-ink-700 bg-ink-850">
+                  <LiveView
+                    frame={frame ?? { url: "", width: 9, height: 19 }}
+                    overlay={overlay}
+                    takeover={control === "takeover"}
+                    onInput={(event) => send({ command: "input", event })}
+                    placeholder={!frame}
+                  />
+                </div>
+              </div>
             </div>
-            <LiveView frame={frame} overlay={overlay} takeover={control === "takeover"} onInput={(event) => send({ command: "input", event })} />
-          </div>
+          ) : (
+            <div data-testid="browser-frame" className="flex flex-col overflow-hidden rounded-xl border border-ink-700 bg-ink-900">
+              <div className="flex h-10 items-center gap-3 border-b border-ink-700 bg-ink-850 px-3">
+                <GlobeSimple className="text-fg-dim" />
+                <div className="flex h-6 flex-1 items-center truncate rounded-md border border-ink-700 bg-ink-950 px-3 font-mono text-xs text-fg-muted">
+                  {r?.url.replace(/^https?:\/\//, "") ?? ""}
+                </div>
+                {active && <span className="rounded-md bg-fail/15 px-2 py-0.5 text-xs font-medium text-fail">LIVE</span>}
+              </div>
+              <LiveView frame={frame} overlay={overlay} takeover={control === "takeover"} onInput={(event) => send({ command: "input", event })} />
+            </div>
+          )}
           <div className="flex items-center justify-between gap-4 text-sm">
             <div className="flex min-w-0 items-center gap-2">
               {planned ? (
