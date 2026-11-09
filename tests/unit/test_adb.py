@@ -154,3 +154,10 @@ def test_keyevents_in_one_command():
     a, r = adb()
     a.keyevents(123, 67, 67)
     assert r.calls[-1][3:] == ["shell", "input", "keyevent", "123", "67", "67"]
+
+
+def test_package_versions_single_command():
+    out = (b"com.a versionName=3.8.1\ncom.b versionName=2.4.0-dev\ncom.c \n")
+    a, r = adb({"pm list packages -3": (0, out, b"")})
+    assert a.package_versions() == {"com.a": "3.8.1", "com.b": "2.4.0-dev", "com.c": None}
+    assert len(r.calls) == 1

@@ -1,4 +1,4 @@
-import json
+﻿import json
 import re
 
 import pytest
@@ -30,6 +30,13 @@ class DeviceAdb:
         if self.serial == "ZY22":
             raise AdbError("error: device unauthorized")
         return sorted(self.state["packages"])
+
+    def package_versions(self):
+        return {p: ("3.8.1" if p == "com.demo.app" else None) for p in self.packages()}
+
+    def screencap(self):
+        from tests.android_fakes import PNG
+        return PNG
 
     def install(self, path):
         if self.state["fail"]:
@@ -71,7 +78,9 @@ def test_adb_missing_503(tmp_path):
 
 def test_packages_and_unauthorized(ctx):
     client, *_ = ctx
-    assert client.get("/api/devices/R58M123/packages").json() == {"packages": ["com.demo.app"]}
+    body = client.get("/api/devices/R58M123/packages").json()
+    assert body["packages"] == ["com.demo.app"]
+    assert body["apps"] == [{"package": "com.demo.app", "version": "3.8.1"}]
     r = client.get("/api/devices/ZY22/packages")
     assert r.status_code == 409 and "unauthorized" in r.json()["detail"]
 
@@ -84,7 +93,7 @@ def test_install_apk_detects_new_package(ctx):
     assert r.json()["package"] == "com.baru.app"
     saved = state["installed"][0]
     assert saved.endswith(".apk") and "apks" in saved
-    # pasang ulang: tidak ada paket baru → pengguna memilih dari daftar
+    # pasang ulang: tidak ada paket baru â†’ pengguna memilih dari daftar
     r = client.post("/api/devices/R58M123/install?filename=demo.apk", content=b"PK\x03\x04apk")
     assert r.json()["package"] is None and "com.demo.app" in r.json()["packages"]
 
@@ -159,3 +168,10 @@ def test_android_explore_and_deep_run(ctx, monkeypatch):
     cases = client.get(f"/api/runs/{deep['id']}/cases").json()
     assert [c["status_ai"] for c in cases] == ["Pass"]
     assert fake.current == "USERS"  # run modul dibuka di layar awal test case lewat jalur hasil explore
+
+
+def test_device_screen_preview(ctx):
+    client, *_ = ctx
+    r = client.get("/api/devices/R58M123/screen")
+    assert r.status_code == 200 and r.headers["content-type"] == "image/jpeg" and r.content[:2] == b"\xff\xd8"
+    assert r.headers["cache-control"] == "no-store"

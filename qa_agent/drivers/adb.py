@@ -130,6 +130,20 @@ class Adb:
         out = self.shell("pm list packages -3" if third_party else "pm list packages")
         return sorted(line.split(":", 1)[1].strip() for line in out.splitlines() if line.startswith("package:"))
 
+    def package_versions(self) -> dict[str, str | None]:
+        """Paket pihak ketiga beserta versionName, dalam satu perintah shell."""
+        script = ("for p in $(pm list packages -3 | cut -d: -f2); do "
+                  "echo \"$p $(dumpsys package $p | grep -m1 versionName)\"; done")
+        out = self.shell(script, timeout=60)
+        versions: dict[str, str | None] = {}
+        for line in out.splitlines():
+            parts = line.strip().split(None, 1)
+            if not parts:
+                continue
+            match = re.search(r"versionName=(\S+)", parts[1]) if len(parts) > 1 else None
+            versions[parts[0]] = match.group(1) if match else None
+        return dict(sorted(versions.items()))
+
     def install(self, apk_path: str) -> None:
         out = self._cmd("install", "-r", "-g", str(apk_path), timeout=300).decode("utf-8", "replace")
         if "Success" not in out:
