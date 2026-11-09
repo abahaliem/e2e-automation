@@ -56,8 +56,18 @@ Aturan:
 """
 
 
+ANDROID_NOTE = """
+Catatan aplikasi Android:
+- back = menekan tombol Kembali di HP (juga untuk menutup keyboard layar atau dialog).
+- navigate tidak tersedia; berpindah layar dengan click, back, atau scroll.
+- Daftar panjang: scroll "down" untuk melihat elemen di bawahnya.
+- Dialog "tidak merespons" / "telah berhenti" dari Android adalah bukti bug (crash/ANR); sebutkan di actual.
+"""
+
+
 def execute_system(platform: str, data_prefix: str) -> str:
-    return EXECUTE_SYSTEM.replace("<<platform>>", platform).replace("<<data_prefix>>", data_prefix)
+    text = EXECUTE_SYSTEM.replace("<<platform>>", platform).replace("<<data_prefix>>", data_prefix)
+    return text + ANDROID_NOTE if platform == "android" else text
 
 
 def explore_system(known_modules: list[str]) -> str:

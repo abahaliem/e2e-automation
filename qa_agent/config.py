@@ -8,7 +8,7 @@ from urllib.parse import urlsplit
 
 import yaml
 from dotenv import load_dotenv
-from pydantic import BaseModel, Field, ValidationError, field_validator
+from pydantic import BaseModel, Field, ValidationError, ValidationInfo, field_validator
 
 
 class ConfigError(Exception):
@@ -16,17 +16,25 @@ class ConfigError(Exception):
 
 
 class TargetCfg(BaseModel):
-    platform: Literal["web"] = "web"
-    url: str
+    platform: Literal["web", "android"] = "web"
+    url: str  # web: http(s)://...; android: android://<nama.paket>
     allowed_domains: list[str] = Field(default_factory=list)
     login_endpoints: list[str] = Field(default_factory=list)
 
     @field_validator("url")
     @classmethod
-    def _url_has_scheme(cls, v: str) -> str:
+    def _url_has_scheme(cls, v: str, info: ValidationInfo) -> str:
+        if info.data.get("platform") == "android":
+            if not re.fullmatch(r"android://[A-Za-z][\w]*(\.[A-Za-z_][\w]*)+/?", v):
+                raise ValueError("untuk Android harus berbentuk android://nama.paket.aplikasi")
+            return v.rstrip("/")
         if not v.startswith(("http://", "https://")):
             raise ValueError("harus diawali http:// atau https://")
         return v.rstrip("/")
+
+    @property
+    def package(self) -> str:
+        return urlsplit(self.url).netloc if self.platform == "android" else ""
 
 
 class AccountCfg(BaseModel):
@@ -96,6 +104,8 @@ class Config(BaseModel):
         return v
 
     def domains(self) -> list[str]:
+        if self.target.platform == "android":
+            return [self.target.package]
         return self.target.allowed_domains or [urlsplit(self.target.url).hostname or ""]
 
     def credentials(self, role: str | None = None) -> Credentials:

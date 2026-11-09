@@ -57,9 +57,10 @@ def test_click_navigation_records_replayable_path():
     assert [s["name"] for s in d.path_to(users.location)] == ["MASUK", "Pengguna"]
     assert d.current_url == users.location
 
-    # sesi baru, lalu kembali ke layar Pengguna lewat jalur yang tercatat
+    # sesi baru (aplikasi menyimpan login, jadi terbuka di Beranda), lalu ke layar Pengguna lewat jalur tercatat
+    adb.start = "HOME"
     d.new_session(None)
-    assert adb.current == "LOGIN"
+    assert adb.current == "HOME"
     d.goto(users.location)
     assert adb.current == "USERS"
     d.goto(home.location)
@@ -74,13 +75,16 @@ def test_registered_paths_used_by_new_driver():
     paths = {home.location: d.path_to(home.location)}
 
     d2, adb2 = make()
+    adb2.start = "HOME"  # sudah login
     d2.register_paths(paths)
     d2.goto(home.location)
     assert adb2.current == "HOME"
 
 
 def test_goto_unreachable_raises():
-    d, _ = make()
+    adb = FakeAdb({"HOME": HOME_XML}, "HOME")
+    d = AndroidDriver(adb, "com.demo.app", sleep=lambda s: None)
+    d.start()
     d.register_paths({"android://com.demo.app/MainActivity#deadbeef": [{"role": "button", "name": "Tidak ada", "selector": ""}]})
     with pytest.raises(RuntimeError, match="tidak bisa dicapai"):
         d.goto("android://com.demo.app/MainActivity#deadbeef")
@@ -188,3 +192,32 @@ def test_live_frames_only_while_streaming():
     time.sleep(0.3)
     assert len(frames) == count
     d.stop()
+
+
+def test_replay_skips_login_steps_when_already_logged_in():
+    # Jalur dari explore: LOGIN -(MASUK)-> HOME -(Pengguna)-> USERS. Aplikasi yang sudah login langsung membuka HOME.
+    d, adb = make()
+    obs = d.observe()
+    d.execute(Action(action="click", element=4), find(obs, "MASUK"))
+    home = d.observe()
+    d.execute(Action(action="click", element=2), find(home, "Pengguna"))
+    users = d.observe()
+    paths = {users.location: d.path_to(users.location)}
+
+    adb2 = FakeAdb({"LOGIN": LOGIN_XML, "HOME": HOME_XML, "USERS": USERS_XML}, "HOME", {PENGGUNA: "USERS"})
+    d2 = AndroidDriver(adb2, "com.demo.app", sleep=lambda s: None)
+    d2.start()
+    d2.register_paths(paths)
+    d2.goto(users.location)
+    assert adb2.current == "USERS"
+
+
+def test_replay_stops_at_login_screen_for_auth_to_handle():
+    d, adb = make()
+    obs = d.observe()
+    d.execute(Action(action="click", element=4), find(obs, "MASUK"))
+    home = d.observe()
+    d.new_session(None)  # aplikasi kembali ke LOGIN (sesi habis)
+    d.goto(home.location)  # tidak menekan MASUK dengan form kosong
+    assert adb.current == "LOGIN"
+    assert not [c for c in adb.calls[-3:] if c[0] == "tap"]

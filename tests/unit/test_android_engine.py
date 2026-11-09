@@ -1,0 +1,101 @@
+﻿import pytest
+
+from qa_agent.config import Config
+from qa_agent.drivers.android import AndroidDriver
+from qa_agent.evidence import RunStore
+from qa_agent.guard import Guard
+from qa_agent.llm.fake import FakeLLM
+from qa_agent.models import ScreenInfo
+from qa_agent.orchestrator.explore import Explorer
+from qa_agent.orchestrator.fingerprint import normalize_location
+from qa_agent.agent import prompts
+from qa_agent.runtime import build_runtime
+from qa_agent.config import Credentials
+from tests.android_fakes import HOME_XML, USERS_XML, FakeAdb, hierarchy, node
+import json
+import re
+
+
+def android_cfg(**over):
+    data = {"target": {"platform": "android", "url": "android://com.demo.app"},
+            "accounts": [{"role": "admin", "username_env": "-", "password_env": "-"}],
+            "llm": {"base_url": "http://x/v1", "model": "m", "api_key_env": "-"}}
+    data.update(over)
+    return Config.model_validate(data)
+
+
+def test_config_android_target():
+    cfg = android_cfg()
+    assert cfg.target.platform == "android"
+    assert cfg.target.package == "com.demo.app"
+    assert cfg.domains() == ["com.demo.app"]
+    with pytest.raises(Exception):
+        Config.model_validate({"target": {"url": "android://com.demo.app"}, "accounts": [{"role": "a", "username_env": "-", "password_env": "-"}],
+                               "llm": {"base_url": "http://x/v1", "model": "m", "api_key_env": "-"}})
+    with pytest.raises(Exception):
+        android_cfg(target={"platform": "android", "url": "http://web.test"})
+
+
+def test_guard_android_scheme():
+    g = Guard("dev", ["com.demo.app"])
+    assert g.is_allowed_url("android://com.demo.app/MainActivity#abcd1234")
+    assert not g.is_allowed_url("android://com.lain.app/Main#x")
+
+
+def test_normalize_location_keeps_android_screen_key():
+    loc = "android://com.demo.app/MainActivity#abcd1234"
+    assert normalize_location(loc) == loc
+
+
+def test_screeninfo_nav_path_default():
+    assert ScreenInfo(fingerprint="f", url="u", module="m", page_name="p").nav_path == []
+
+
+def test_android_prompt_note():
+    text = prompts.execute_system("android", "QA-AUTO")
+    assert "aplikasi android" in text and "tombol Kembali" in text
+    assert "tombol Kembali" not in prompts.execute_system("web", "QA-AUTO")
+
+
+REPORTS_XML = hierarchy(node("android.widget.TextView", text="Laporan Bulanan", clickable=False),
+                        node("android.widget.Button", text="Unduh", rid="com.demo.app:id/download"))
+
+
+def explore_brain(system, messages):
+    text = messages[0].text
+    if system.startswith("MODE: EXPLORE_SCREEN"):
+        links = [int(i) for i, name in re.findall(r'^\[(\d+)\] button "(Pengguna|Laporan)"', text, re.M)]
+        module = "Pengguna" if "Daftar Pengguna" in text else "Laporan" if "Laporan Bulanan" in text else "Beranda"
+        return json.dumps({"module": module, "page_name": module, "purpose": "x", "nav_candidates": links})
+    raise AssertionError("tidak diharapkan")
+
+
+def test_explorer_maps_android_screens_with_replayable_paths(tmp_path):
+    adb = FakeAdb({"HOME": HOME_XML, "USERS": USERS_XML, "REPORTS": REPORTS_XML}, "HOME",
+                  {("HOME", (0, 300, 1080, 420)): "USERS", ("HOME", (0, 440, 1080, 560)): "REPORTS"})
+    driver = AndroidDriver(adb, "com.demo.app", sleep=lambda s: None)
+    driver.start()
+    store = RunStore(tmp_path / "run")
+    explorer = Explorer(driver=driver, llm=FakeLLM(explore_brain), guard=Guard("dev", ["com.demo.app"]), store=store,
+                        auth=None, start_url="android://com.demo.app", max_minutes=1)
+    app_map = explorer.run()
+    assert app_map.modules() == ["Beranda", "Pengguna", "Laporan"]
+    users = app_map.screens_for("Pengguna")[0]
+    assert [s["name"] for s in users.nav_path] == ["Pengguna"]
+    assert app_map.screens_for("Beranda")[0].nav_path == []
+
+    # driver baru (mis. run modul) bisa langsung ke layar Laporan
+    adb2 = FakeAdb(adb.screens, "HOME", adb.transitions)
+    d2 = AndroidDriver(adb2, "com.demo.app", sleep=lambda s: None)
+    d2.start()
+    d2.register_paths({s.url: s.nav_path for s in app_map.screens})
+    d2.goto(app_map.screens_for("Laporan")[0].url)
+    assert adb2.current == "REPORTS"
+
+
+def test_build_runtime_android(tmp_path):
+    rt = build_runtime(android_cfg(), RunStore(tmp_path / "r"), tmp_path, environment="dev", llm=FakeLLM([]),
+                       credentials=Credentials(role="admin", username="u", password="p"), device_serial="R58M123")
+    assert isinstance(rt.driver, AndroidDriver)
+    assert rt.driver.adb.serial == "R58M123" and rt.driver.package == "com.demo.app"
+    assert rt.loop.platform == "android"

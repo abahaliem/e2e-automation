@@ -166,6 +166,9 @@ class Explorer:
             page_name=summary.page_name or obs.title or obs.location, purpose=summary.purpose,
             forms=summary.forms, actions=summary.actions, screenshot=shot, depth=depth, parent=parent, public=public,
         )
+        path_to = getattr(self.driver, "path_to", None)
+        if path_to is not None:  # Android: simpan jalur tap supaya run modul bisa kembali ke layar ini
+            info.nav_path = path_to(obs.location)
         app_map.screens.append(info)
         self.store.write_app_map(app_map)
         try:
