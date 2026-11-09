@@ -46,6 +46,11 @@ export function LiveView({
   className?: string;
 }) {
   const ratio = frame ? `${frame.width} / ${frame.height}` : "16 / 9";
+  const portrait = !!frame && frame.height > frame.width;
+  // HP (potret): tinggi dibatasi, lebar mengikuti rasio, di tengah panel
+  const sizing: CSSProperties = portrait
+    ? { aspectRatio: ratio, height: "min(68vh, 860px)", width: "auto", maxWidth: "100%" }
+    : { aspectRatio: ratio };
   const handleClick = (e: MouseEvent<HTMLDivElement>) => {
     if (!takeover) return;
     const { x, y } = toNormalized(e.clientX, e.clientY, e.currentTarget.getBoundingClientRect());
@@ -60,9 +65,10 @@ export function LiveView({
       data-testid="live-surface"
       onClick={handleClick}
       onWheel={handleWheel}
-      style={{ aspectRatio: ratio }}
+      style={sizing}
       className={cn(
-        "relative w-full select-none overflow-hidden bg-white",
+        "relative select-none overflow-hidden bg-white",
+        portrait ? "mx-auto" : "w-full",
         takeover ? "cursor-crosshair ring-2 ring-inset ring-accent" : "cursor-default",
         className,
       )}

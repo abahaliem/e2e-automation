@@ -5,7 +5,9 @@ import type {
   CaseDetailResponse,
   ControlInput,
   ControlState,
+  Device,
   Finding,
+  InstallResult,
   Profile,
   ProfileInput,
   ReviewInput,
@@ -104,6 +106,16 @@ export const api = {
     patch<{ case: TestCase; warning: string | null }>(`/api/runs/${runId}/cases/${encodeURIComponent(tcId)}`, body),
   downloadUrl: (runId: number, kind: "xlsx" | "html" | "pdf") => `/api/runs/${runId}/download/${kind}`,
   fileUrl: (runId: number, path: string) => `/api/runs/${runId}/files/${path}`,
+
+  // perangkat Android
+  listDevices: () => get<{ devices: Device[] }>("/api/devices"),
+  devicePackages: (serial: string) => get<{ packages: string[] }>(`/api/devices/${encodeURIComponent(serial)}/packages`),
+  installApk: (serial: string, file: File) =>
+    request<InstallResult>(`/api/devices/${encodeURIComponent(serial)}/install?filename=${encodeURIComponent(file.name)}`, {
+      method: "POST",
+      body: file,
+      headers: { "content-type": "application/octet-stream" },
+    }),
 
   // statistik
   stats: (days = 30) => get<Stats>(`/api/stats?days=${days}`),

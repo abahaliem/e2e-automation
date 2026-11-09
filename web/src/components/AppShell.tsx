@@ -25,7 +25,7 @@ const ITEMS: Item[] = [
     match: (p) => p.startsWith("/runs") && p !== "/runs/new",
   },
   { to: "/apps", label: "Aplikasi", icon: SquaresFour, match: (p) => p.startsWith("/apps") },
-  { to: "/devices", label: "Perangkat", icon: DeviceMobile, match: () => false, soon: true },
+  { to: "/devices", label: "Perangkat", icon: DeviceMobile, match: (p) => p.startsWith("/devices") },
   { to: "/settings", label: "Pengaturan", icon: GearSix, match: (p) => p.startsWith("/settings") },
 ];
 

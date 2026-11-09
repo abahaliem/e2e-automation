@@ -40,8 +40,24 @@ export interface App {
   accounts: number;
 }
 
+export interface Device {
+  serial: string;
+  state: "device" | "unauthorized" | "offline" | string;
+  model: string;
+  emulator: boolean;
+  android_version: string | null;
+}
+
+export interface InstallResult {
+  package: string | null;
+  packages: string[];
+  message: string;
+  file: string;
+}
+
 export interface AppInput {
   name: string;
+  platform?: "web" | "android";
   url: string;
   allowed_domains: string[];
   login_endpoints: string[];
@@ -75,6 +91,7 @@ export interface Run {
   note: string;
   model: string;
   confirm_each_step: boolean;
+  device_serial?: string | null;
   active: boolean;
   control_state: ControlState | null;
 }
@@ -88,6 +105,7 @@ export interface RunInput {
   account_id?: number | null;
   environment: "dev" | "production";
   confirm_each_step: boolean;
+  device_serial?: string | null;
 }
 
 export type ControlCommand =

@@ -26,11 +26,10 @@ describe("AppShell", () => {
     expect(screen.getByRole("link", { name: /Riwayat run/ })).toHaveAttribute("aria-current", "page");
   });
 
-  it("menu Perangkat nonaktif dengan label segera", () => {
-    renderAt("/");
-    const item = screen.getByText("Perangkat").closest("[aria-disabled]");
-    expect(item).toHaveAttribute("aria-disabled", "true");
-    expect(screen.getByText("segera")).toBeInTheDocument();
+  it("menu Perangkat aktif", () => {
+    renderAt("/devices");
+    expect(screen.getByRole("link", { name: /Perangkat/ })).toHaveAttribute("aria-current", "page");
+    expect(screen.queryByText("segera")).not.toBeInTheDocument();
   });
 
   it("menampilkan profil AI di bawah", () => {

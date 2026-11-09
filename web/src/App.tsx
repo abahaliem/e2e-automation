@@ -4,6 +4,7 @@ import { AppShell } from "@/components/AppShell";
 import { api } from "@/lib/api";
 import { AppsPage } from "@/pages/Apps";
 import { DashboardPage } from "@/pages/Dashboard";
+import { DevicesPage } from "@/pages/Devices";
 import { HistoryPage } from "@/pages/History";
 import { NotFoundPage } from "@/pages/NotFound";
 import { RunLivePage } from "@/pages/RunLive";
@@ -23,6 +24,7 @@ export function App() {
         <Route path="runs/new" element={<RunNewPage />} />
         <Route path="runs/:runId/result" element={<RunResultPage />} />
         <Route path="apps" element={<AppsPage />} />
+        <Route path="devices" element={<DevicesPage />} />
         <Route path="settings" element={<SettingsPage />} />
         <Route path="*" element={<NotFoundPage />} />
       </Route>

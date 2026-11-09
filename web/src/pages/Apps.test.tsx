@@ -74,6 +74,25 @@ describe("Halaman Aplikasi", () => {
     await waitFor(() => expect((screen.getByLabelText("Password") as HTMLInputElement).value).toBe(""));
   });
 
+  it("aplikasi Android: paket divalidasi, tanpa isian domain web", async () => {
+    const androidApp = { ...app, id: 9, name: "CMC Mobile", platform: "android" as const, url: "android://com.biznet.cmc" };
+    mocked.listApps.mockResolvedValue([androidApp]);
+    mocked.listAccounts.mockResolvedValue([]);
+    mocked.updateApp.mockResolvedValue(androidApp);
+    renderWithProviders(<AppsPage />);
+    const user = userEvent.setup();
+    const pkg = await screen.findByLabelText("Paket aplikasi Android");
+    expect(screen.queryByLabelText("Domain yang boleh dibuka")).not.toBeInTheDocument();
+    await user.clear(pkg);
+    await user.type(pkg, "https://salah.test");
+    await user.click(screen.getByRole("button", { name: /Simpan aplikasi/ }));
+    expect(await screen.findByText(/Paket aplikasi Android tidak valid/)).toBeInTheDocument();
+    await user.clear(pkg);
+    await user.type(pkg, "android://com.biznet.cmc");
+    await user.click(screen.getByRole("button", { name: /Simpan aplikasi/ }));
+    await waitFor(() => expect(mocked.updateApp).toHaveBeenCalled());
+  });
+
   it("state kosong", async () => {
     mocked.listApps.mockResolvedValue([]);
     renderWithProviders(<AppsPage />);
