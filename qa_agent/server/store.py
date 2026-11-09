@@ -574,6 +574,13 @@ class Store:
                     (run_id, c.id, c.module, c.title, c.type, c.status_ai, c.status_final, c.severity, start + n))
             self._db.commit()
 
+    def replace_cases(self, run_id: int, cases: list[QaTestCase]) -> None:
+        """Indeks test case diganti total (review: ada yang dihapus/diurutkan ulang)."""
+        with self._lock:
+            self._db.execute("DELETE FROM test_cases_index WHERE run_id=?", (run_id,))
+            self._db.commit()
+        self.upsert_cases(run_id, cases)
+
     def list_cases(self, run_id: int) -> list[CaseRow]:
         return [CaseRow.model_validate(dict(r)) for r in
                 self._all("SELECT * FROM test_cases_index WHERE run_id=? ORDER BY position, tc_id", (run_id,))]

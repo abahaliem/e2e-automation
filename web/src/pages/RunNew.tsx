@@ -29,6 +29,11 @@ export function RunNewPage() {
   const [mode, setMode] = useState<"explore" | "deep">("explore");
   const [module, setModule] = useState("");
   const [confirmEach, setConfirmEach] = useState(false);
+  const [reviewFirst, setReviewFirst] = useState(false);
+  // Regresi: ?reuse=<run> memakai test case run itu (tanpa AI menyusun ulang)
+  const reuseId = Number(params.get("reuse")) || null;
+  const [reuse, setReuse] = useState<number | null>(reuseId);
+  const reuseRun = useQuery({ queryKey: ["run", reuseId], queryFn: () => api.getRun(reuseId!), enabled: !!reuseId });
   const [prd, setPrd] = useState<{ name: string; text: string } | null>(null);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
@@ -86,6 +91,13 @@ export function RunNewPage() {
   useEffect(() => {
     if (!explored && mode === "deep") setMode("explore");
   }, [explored, mode]);
+  useEffect(() => {
+    // modul mengikuti run sumber test case
+    if (reuse && reuseRun.data?.module && explored && matched?.id === reuseRun.data.app_id) {
+      setMode("deep");
+      setModule(reuseRun.data.module);
+    }
+  }, [reuse, reuseRun.data, explored, matched?.id]);
 
   function selectApp(a: App) {
     setPlatform(a.platform === "android" ? "android" : "web");
@@ -128,6 +140,8 @@ export function RunNewPage() {
         confirm_each_step: confirmEach,
         device_serial: platform === "android" ? serial : null,
         ...(platform === "android" && apk ? { apk_file: apk.file, apk_grant: apk.grant, apk_uninstall: apk.uninstall } : {}),
+        ...(mode === "deep" && reviewFirst ? { review_first: true } : {}),
+        ...(mode === "deep" && reuse ? { reuse_cases_from: reuse } : {}),
       };
       return api.createRun(body);
     },
@@ -414,6 +428,30 @@ export function RunNewPage() {
             )}
             {errors.prd && <p className="text-xs text-fail">{errors.prd}</p>}
           </div>
+          {mode === "deep" && reuse && reuseRun.data && (
+            <Alert
+              tone="info"
+              action={
+                <Button size="sm" variant="ghost" onClick={() => setReuse(null)}>
+                  Susun ulang oleh AI
+                </Button>
+              }
+            >
+              Memakai test case yang sama dengan run #{reuseRun.data.id} (modul {reuseRun.data.module}) untuk regresi. AI tidak
+              menyusun ulang test case.
+            </Alert>
+          )}
+          {mode === "deep" && (
+            <div className="rounded-lg border border-ink-700 bg-ink-900 p-4">
+              <Switch
+                id="run-review"
+                checked={reviewFirst}
+                onChange={setReviewFirst}
+                label="Review test case dulu sebelum dijalankan"
+                description="Run berhenti setelah test case disusun. Kamu bisa edit, hapus, atau tambah test case, lalu jalankan."
+              />
+            </div>
+          )}
           <div className="rounded-lg border border-ink-700 bg-ink-900 p-4">
             <Switch
               id="run-confirm"

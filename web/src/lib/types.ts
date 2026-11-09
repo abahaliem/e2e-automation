@@ -136,6 +136,10 @@ export interface Run {
   device_serial?: string | null;
   /** username yang memulai run (mode server) */
   created_by?: string | null;
+  review_first?: boolean;
+  reuse_cases_from?: number | null;
+  /** test case sudah disusun, menunggu QA review sebelum dijalankan */
+  awaiting_review?: boolean;
   active: boolean;
   control_state: ControlState | null;
 }
@@ -150,6 +154,8 @@ export interface RunInput {
   environment: "dev" | "production";
   confirm_each_step: boolean;
   device_serial?: string | null;
+  review_first?: boolean;
+  reuse_cases_from?: number | null;
   apk_file?: string | null;
   apk_grant?: boolean;
   apk_uninstall?: boolean;
@@ -310,3 +316,25 @@ export type Role = "admin" | "qa" | "viewer";
 export type AuthUser = { id: number; username: string; role: Role };
 export type AuthStatus = { auth_required: boolean; user: AuthUser | null };
 export type UserRow = AuthUser & { active: boolean; created_at: string; last_login: string | null };
+
+// ---------- review test case sebelum dijalankan ----------
+export const REVIEW_NOTE = "Menunggu review test case";
+export type PlanCase = {
+  id?: string;
+  title: string;
+  page: string;
+  type: "positif" | "negatif" | "validasi" | "boundary" | "navigasi";
+  priority: "High" | "Medium" | "Low";
+  precondition: string;
+  test_data: string;
+  steps: string[];
+  expected: string;
+  expected_source?: "PRD" | "Inferensi AI";
+  start_url: string;
+};
+export type PlanResponse = {
+  editable: boolean;
+  module: string | null;
+  cases: PlanCase[];
+  screens: { url: string; page_name: string }[];
+};

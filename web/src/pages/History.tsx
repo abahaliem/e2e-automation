@@ -85,15 +85,21 @@ export function HistoryPage() {
                       {scopeLabel(r)}
                       {r.environment === "production" && <span className="ml-2 rounded bg-review/10 px-1.5 py-0.5 text-xs text-review">Production</span>}
                     </td>
-                    <td className={cn("px-4 py-3 font-medium", STATUS_TONE[r.status])}>{RUN_STATUS_LABEL[r.status] ?? r.status}</td>
+                    <td className={cn("px-4 py-3 font-medium", STATUS_TONE[r.status])}>{r.awaiting_review ? "Menunggu review" : RUN_STATUS_LABEL[r.status] ?? r.status}</td>
                     <td className="px-4 py-3">
                       <CountsInline run={r} />
                     </td>
                     <td className="px-4 py-3 text-fg-muted">{formatDateTime(r.started_at)}</td>
                     <td className="px-4 py-3">
-                      <Link to={live ? `/runs/${r.id}` : `/runs/${r.id}/result`} className="text-accent">
-                        {live ? "Lihat live" : "Lihat hasil"}
-                      </Link>
+                      {r.awaiting_review ? (
+                        <Link to={`/runs/${r.id}/review`} className="text-accent">
+                          Review test case
+                        </Link>
+                      ) : (
+                        <Link to={live ? `/runs/${r.id}` : `/runs/${r.id}/result`} className="text-accent">
+                          {live ? "Lihat live" : "Lihat hasil"}
+                        </Link>
+                      )}
                     </td>
                     <td className="px-4 py-3">{!live && <DocButtons runId={r.id} />}</td>
                   </tr>
