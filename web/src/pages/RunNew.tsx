@@ -290,7 +290,11 @@ export function RunNewPage() {
                   label="Yang diuji"
                   htmlFor="run-scope"
                   error={errors.module}
-                  hint={!explored ? "Jalankan Seluruh aplikasi dulu untuk menguji satu modul" : undefined}
+                  hint={
+                    !explored
+                      ? "Jalankan Seluruh aplikasi dulu untuk menguji satu modul"
+                      : `${modules.data?.modules.length ?? 0} modul hasil penjelajahan bisa diuji satu per satu`
+                  }
                 >
                   <Select
                     id="run-scope"
@@ -306,12 +310,16 @@ export function RunNewPage() {
                       }
                     }}
                   >
-                    <option value="explore">Seluruh aplikasi</option>
-                    {(modules.data?.modules ?? []).map((m) => (
-                      <option key={m} value={`deep:${m}`}>
-                        Modul {m}
-                      </option>
-                    ))}
+                    <option value="explore">Seluruh aplikasi (petakan semua menu)</option>
+                    {(modules.data?.modules ?? []).length > 0 && (
+                      <optgroup label="Satu modul (uji mendalam)">
+                        {(modules.data?.modules ?? []).map((m) => (
+                          <option key={m} value={`deep:${m}`}>
+                            Satu modul: {m}
+                          </option>
+                        ))}
+                      </optgroup>
+                    )}
                   </Select>
                 </Field>
                 {accountField}
@@ -376,7 +384,13 @@ export function RunNewPage() {
                 icon={<Target className={cn("text-lg", mode === "deep" ? "text-accent" : "text-fg-muted")} />}
                 title="Satu modul"
                 text="Uji mendalam: positif, negatif, validasi, batas input."
-                hint={!explored ? "Jalankan Seluruh aplikasi dulu untuk memetakan modul" : undefined}
+                hint={
+                  !explored
+                    ? matched || url.trim()
+                      ? `${matched?.name ?? url.trim().replace(/^https?:\/\//, "").replace(/\/$/, "")} belum dipetakan. Jalankan Seluruh aplikasi dulu untuk memetakan modul`
+                      : "Jalankan Seluruh aplikasi dulu untuk memetakan modul"
+                    : undefined
+                }
               />
             </div>
           </div>

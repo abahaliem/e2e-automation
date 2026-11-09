@@ -110,3 +110,48 @@ def test_login_without_account_fails_fast_with_clear_message(tmp_path):
     with pytest.raises(LoginFailed, match="akun test"):
         rt.auth.login()
     assert llm.calls == []  # AI tidak dipanggil sia-sia
+
+
+POPUP_XML = hierarchy(
+    node("android.widget.TextView", text="Form Reason Lembur", bounds="[0,100][1080,200]", clickable=False),
+    node("android.widget.EditText", text="Reason", rid="com.demo.app:id/reason", bounds="[0,300][1080,420]"),
+    node("android.widget.Button", text="Submit Reason", rid="com.demo.app:id/submit", bounds="[0,500][1080,600]"),
+)
+
+
+def popup_brain(system, messages):
+    text = messages[0].text
+    if "Form Reason Lembur" in text:
+        return json.dumps({"module": "Lembur", "page_name": "Form Reason Lembur", "purpose": "x", "nav_candidates": []})
+    return explore_brain(system, messages)
+
+
+def test_explorer_dismisses_blocking_popup_with_back_and_maps_screen_behind(tmp_path):
+    """Form popup setelah login menutupi halaman utama: explorer menekan Kembali lalu memetakan menu di baliknya."""
+    adb = FakeAdb({"POPUP": POPUP_XML, "HOME": HOME_XML, "USERS": USERS_XML, "REPORTS": REPORTS_XML}, "POPUP",
+                  {("HOME", (0, 300, 1080, 420)): "USERS", ("HOME", (0, 440, 1080, 560)): "REPORTS"})
+
+    def keyevent(code):
+        adb.calls.append(("key", code))
+        if code == 4:
+            adb.current = {"POPUP": "HOME", "USERS": "HOME", "REPORTS": "HOME"}.get(adb.current, adb.current)
+
+    adb.keyevent = keyevent
+    driver = AndroidDriver(adb, "com.demo.app", sleep=lambda s: None)
+    driver.start()
+    store = RunStore(tmp_path / "run")
+    explorer = Explorer(driver=driver, llm=FakeLLM(popup_brain), guard=Guard("dev", ["com.demo.app"]), store=store,
+                        auth=None, start_url="android://com.demo.app", max_minutes=1)
+    app_map = explorer.run()
+    assert app_map.modules() == ["Lembur", "Beranda", "Pengguna", "Laporan"]
+    home = app_map.screens_for("Beranda")[0]
+    assert home.nav_path == [{"key": "back"}]
+    users = app_map.screens_for("Pengguna")[0]
+    assert users.nav_path[0] == {"key": "back"} and users.nav_path[-1]["name"] == "Pengguna"
+
+    # run modul: jalur dengan langkah Kembali bisa diputar ulang dari awal aplikasi
+    d2 = AndroidDriver(adb, "com.demo.app", sleep=lambda s: None)
+    d2.start()
+    d2.register_paths({s.url: s.nav_path for s in app_map.screens})
+    d2.goto(users.url)
+    assert adb.current == "USERS"

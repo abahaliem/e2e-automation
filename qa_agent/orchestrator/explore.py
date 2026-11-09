@@ -106,7 +106,13 @@ class Explorer:
             visited.add(landed)
             summary, info = self._add_screen(app_map, obs, depth, parent)
             if depth < self.max_depth:
-                for next_url in self._discover(obs, summary, target):
+                found = self._discover(obs, summary, target)
+                if not found and getattr(self.driver, "back_probe", False):
+                    # Layar buntu (mis. form popup setelah login): coba Kembali, mungkin ada layar lain di baliknya
+                    behind = self._back_probe(target)
+                    if behind:
+                        found = [behind]
+                for next_url in found:
                     if normalize_location(next_url) not in visited:
                         queue.append((next_url, depth + 1, info.fingerprint))
         return app_map
@@ -203,6 +209,20 @@ class Explorer:
             if target:
                 found.append(target)
         return found
+
+    def _back_probe(self, current: str) -> str | None:
+        try:
+            self.driver.goto(current)
+            before = normalize_location(self.driver.current_url)
+            result = self.driver.execute(Action(action="back"), None)
+            after = self.driver.current_url
+            if result.ok and normalize_location(after) != before and self.guard.is_allowed_url(after):
+                return after
+            return None
+        except (LLMError, LoginFailed, DriverCrashed):
+            raise
+        except Exception:
+            return None
 
     def _click_probe(self, current: str, role: str, name: str) -> str | None:
         """Klik elemen tanpa href (tab/menu SPA) untuk melihat apakah pindah halaman."""
