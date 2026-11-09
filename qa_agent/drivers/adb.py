@@ -217,6 +217,11 @@ class Adb:
     def keyevent(self, code: int) -> None:
         self._shell_args("input", "keyevent", str(code))
 
+    def keyevents(self, *codes: int) -> None:
+        """Beberapa tombol dalam satu perintah (lebih cepat daripada satu per satu)."""
+        if codes:
+            self._shell_args("input", "keyevent", *(str(c) for c in codes))
+
     def text(self, value: str) -> None:
         if value:
             self._shell_args("input", "text", escape_text(value))

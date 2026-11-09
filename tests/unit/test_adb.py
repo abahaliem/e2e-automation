@@ -148,3 +148,9 @@ def test_find_adb_uses_known_locations(tmp_path, monkeypatch):
     monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "none"))
     assert find_adb(extra_dirs=[]) is None
     assert find_adb(extra_dirs=[sdk]) == str(sdk / "adb.exe")
+
+
+def test_keyevents_in_one_command():
+    a, r = adb()
+    a.keyevents(123, 67, 67)
+    assert r.calls[-1][3:] == ["shell", "input", "keyevent", "123", "67", "67"]
