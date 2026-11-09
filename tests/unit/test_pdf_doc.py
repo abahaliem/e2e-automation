@@ -64,3 +64,8 @@ def test_reviewed_status_used(tmp_path):
     assert "1 dari 2 temuan sudah direview" in t
     assert "Dinaikkan menjadi Fail" in t
     assert re.search(r"3 Test case 1 Pass 2 Fail 0 Perlu Review 0 Blocked", t)
+
+
+def test_evidence_caption_describes_last_action(tmp_path):
+    html, _ = html_for(tmp_path)
+    assert "Setelah: Klik tombol 'Simpan'" in text(html)
