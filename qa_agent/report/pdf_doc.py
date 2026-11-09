@@ -74,13 +74,15 @@ def _finding(n: int, tc: QaTestCase, records: list[StepRecord], root: Path) -> d
             if s.kind in ("http_error", "page_error", "console_error") and signal_text(s) not in technical:
                 technical.append(signal_text(s))
     shot = next((r for r in reversed(records) if r.screenshot), None)
+    action = next((r for r in reversed(records) if r.action not in NON_REPRO), None)
+    caption = f"Setelah: {humanize(action.action, action.element, action.value)}" if action else ""
     status = tc.effective_status or ""
     return {
         "code": f"BUG-{n:03d}", "tc_id": tc.id, "title": tc.title, "status": status,
         "badge": f"{status}, {tc.severity}" if tc.severity and status == "Fail" else status,
         "repro": repro, "expected": tc.expected, "actual": tc.actual, "technical": technical[:4],
         "note": tc.reviewer_note, "image": _image(root, shot.screenshot if shot else None),
-        "caption": humanize(shot.action, shot.element, shot.value) if shot else "",
+        "caption": caption,
     }
 
 
