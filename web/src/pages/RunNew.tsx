@@ -120,7 +120,7 @@ export function RunNewPage() {
         app_id: app.id,
         mode,
         module: mode === "deep" ? module : null,
-        prd_text: mode === "deep" ? prd?.text ?? null : null,
+        prd_text: prd?.text ?? null,
         profile_id: profileId,
         account_id: matched ? accountId : null,
         environment,
@@ -317,45 +317,50 @@ export function RunNewPage() {
           </div>
 
           {mode === "deep" && (
-            <div className="grid grid-cols-2 gap-5">
-              <Field label="Modul" htmlFor="run-module" error={errors.module}>
-                <Select id="run-module" value={module} onChange={(e) => setModule(e.target.value)} aria-invalid={!!errors.module}>
-                  <option value="">Pilih modul...</option>
-                  {(modules.data?.modules ?? []).map((m) => (
-                    <option key={m} value={m}>
-                      {m}
-                    </option>
-                  ))}
-                </Select>
-              </Field>
-              <div className="flex flex-col gap-1.5">
-                <span className="text-sm font-medium">
-                  PRD <span className="font-normal text-fg-dim">(opsional)</span>
-                </span>
-                {prd ? (
-                  <div className="flex h-10 items-center gap-2 rounded-lg border border-ink-600 bg-ink-900 px-3 text-sm">
-                    <FileArrowUp className="text-accent" />
-                    <span className="truncate">{prd.name}</span>
-                    <button type="button" aria-label="Hapus PRD" className="ml-auto text-fg-muted" onClick={() => setPrd(null)}>
-                      <X />
-                    </button>
-                  </div>
-                ) : (
-                  <label
-                    onDragOver={(e) => e.preventDefault()}
-                    onDrop={onDrop}
-                    className="flex h-10 cursor-pointer items-center justify-center gap-2 rounded-lg border border-dashed border-ink-600 text-sm text-fg-muted hover:bg-ink-850"
-                  >
-                    <FileArrowUp className="text-lg" />
-                    Tarik file .md atau .txt, atau klik
-                    <input type="file" accept=".md,.txt" className="sr-only" onChange={(e) => void readPrd(e.target.files?.[0])} />
-                  </label>
-                )}
-                {errors.prd && <p className="text-xs text-fail">{errors.prd}</p>}
-              </div>
-            </div>
+            <Field label="Modul" htmlFor="run-module" error={errors.module} className="max-w-md">
+              <Select id="run-module" value={module} onChange={(e) => setModule(e.target.value)} aria-invalid={!!errors.module}>
+                <option value="">Pilih modul...</option>
+                {(modules.data?.modules ?? []).map((m) => (
+                  <option key={m} value={m}>
+                    {m}
+                  </option>
+                ))}
+              </Select>
+            </Field>
           )}
 
+          <div className="flex flex-col gap-2">
+            <span className="text-sm font-medium">
+              PRD <span className="font-normal text-fg-dim">(opsional)</span>
+            </span>
+            {prd ? (
+              <div className="flex h-20 items-center gap-3 rounded-xl border border-ink-600 bg-ink-900 px-4 text-sm">
+                <FileArrowUp className="text-xl text-accent" />
+                <div className="min-w-0 flex-1">
+                  <div className="truncate font-medium">{prd.name}</div>
+                  <div className="text-xs text-fg-muted">
+                    {mode === "deep" ? "Dipakai AI untuk menyusun expected result test case." : "Disimpan dan dipakai otomatis saat menguji Satu modul."}
+                  </div>
+                </div>
+                <button type="button" aria-label="Hapus PRD" className="text-fg-muted hover:text-fg" onClick={() => setPrd(null)}>
+                  <X />
+                </button>
+              </div>
+            ) : (
+              <label
+                onDragOver={(e) => e.preventDefault()}
+                onDrop={onDrop}
+                className="grid h-20 cursor-pointer place-items-center rounded-xl border border-dashed border-ink-600 text-sm text-fg-muted hover:bg-ink-850"
+              >
+                <span className="flex items-center gap-2">
+                  <FileArrowUp className="text-lg" />
+                  Tarik file .md atau .txt ke sini, atau klik untuk memilih
+                </span>
+                <input aria-label="File PRD" type="file" accept=".md,.txt" className="sr-only" onChange={(e) => void readPrd(e.target.files?.[0])} />
+              </label>
+            )}
+            {errors.prd && <p className="text-xs text-fail">{errors.prd}</p>}
+          </div>
           <div className="rounded-lg border border-ink-700 bg-ink-900 p-4">
             <Switch
               id="run-confirm"
