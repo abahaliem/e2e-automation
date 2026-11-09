@@ -13,7 +13,7 @@ from qa_agent.agent.control import InterventionError
 from qa_agent.server.events import EventHub
 from qa_agent.server.runs import LLMFactory, RunManager
 from qa_agent.server.secrets import KeyringSecretStore, SecretStore, SecretStoreUnavailable
-from qa_agent.server.settings import ServerSettings
+from qa_agent.server.settings import ServerSettings, configure_playwright_browsers
 from qa_agent.server.store import Store
 
 STATIC_DIR = Path(__file__).parent / "static"
@@ -68,6 +68,7 @@ def create_app(settings: ServerSettings, *, secrets: SecretStore | None = None,
             manager.shutdown()
             store.close()
 
+    configure_playwright_browsers(settings)
     app = FastAPI(title="QA Agent", lifespan=lifespan, docs_url="/api/docs", openapi_url="/api/openapi.json")
     app.state.settings = settings
     app.state.secrets = secrets or KeyringSecretStore()
