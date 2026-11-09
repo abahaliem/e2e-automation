@@ -15,9 +15,9 @@ from pydantic import ValidationError
 
 from qa_agent.agent.control import InterventionError, RunControl
 from qa_agent.config import Config, ConfigError, Credentials
-from qa_agent.evidence import RunStore, now_iso, slugify
+from qa_agent.evidence import RunStore, module_abbr, now_iso, slugify
 from qa_agent.llm.base import LLMClient, LLMError
-from qa_agent.models import STATUSES, AppMap, RunMeta
+from qa_agent.models import STATUSES, AppMap, QaTestCase, RunMeta
 from qa_agent.orchestrator.auth import LoginFailed
 from qa_agent.orchestrator.deep import PlanError
 from qa_agent.server.reporting import build_run_reports
@@ -31,6 +31,7 @@ from qa_agent.server.store import ProfileRow, RunRow, Store
 
 LLMFactory = Callable[[ProfileRow], LLMClient]
 RESUMABLE = ("paused", "interrupted")
+REVIEW_NOTE = "Menunggu review test case"
 COMMANDS = ("pause", "resume", "takeover", "release", "hint", "think_again", "skip", "stop", "end_case",
             "confirm_step", "input")
 
@@ -64,6 +65,8 @@ class RunRequest:
     apk_grant: bool = True
     apk_uninstall: bool = False
     created_by: str | None = None  # username yang memulai run (mode server)
+    review_first: bool = False  # berhenti setelah test case disusun supaya QA bisa review/edit dulu
+    reuse_cases_from: int | None = None  # regresi: pakai test case run lain (tanpa AI menyusun ulang)
 
 
 @dataclass
@@ -151,6 +154,15 @@ class RunManager:
             app_map = RunStore(Path(explore.folder)).read_app_map() if explore else None
             if explore is None or app_map is None:
                 raise ValueError("Jalankan Seluruh aplikasi dulu untuk memetakan modul")
+            if req.reuse_cases_from is not None:
+                source = self.store.get_run(req.reuse_cases_from)
+                if (source is None or source.app_id != app.id or source.mode != "deep"
+                        or not RunStore(Path(source.folder)).read_testcases()):
+                    raise ValueError("Test case run sumber tidak ditemukan untuk aplikasi ini")
+                req.module = source.module
+                options["reuse_cases_from"] = source.id
+            if req.review_first:
+                options["review_first"] = True
             module = app_map.find_module(req.module or "")
             if module is None:
                 raise ValueError(f"Modul '{(req.module or '').strip()}' tidak ditemukan. "
@@ -182,6 +194,47 @@ class RunManager:
         self._publish_status(row)
         self._enqueue(run_id)
         return row
+
+    # ------------------------------------------------------------------ review test case
+    def _reused_cases(self, row: RunRow) -> list[QaTestCase]:
+        source_id = row.options.get("reuse_cases_from")
+        source = self.store.get_run(int(source_id)) if source_id else None
+        if source is None:
+            return []
+        blank = {"status_ai": None, "actual": "", "ai_note": "", "severity": None, "status_final": None,
+                 "reviewer_note": ""}
+        return [c.model_copy(update=blank) for c in RunStore(Path(source.folder)).read_testcases()]
+
+    def plan(self, run_id: int) -> list[QaTestCase]:
+        row = self.store.get_run(run_id)
+        if row is None:
+            raise KeyError(run_id)
+        return RunStore(Path(row.folder)).read_testcases()
+
+    def plan_editable(self, run_id: int) -> bool:
+        """Rencana bisa diubah selama run tidak berjalan dan belum ada test case yang dijalankan."""
+        row = self.store.get_run(run_id)
+        if row is None or row.mode != "deep" or self.is_active(run_id) or row.status not in RESUMABLE:
+            return False
+        cases = self.plan(run_id)
+        return bool(cases) and all(c.status_ai is None for c in cases)
+
+    def update_plan(self, run_id: int, cases: list[QaTestCase]) -> list[QaTestCase]:
+        if not self.plan_editable(run_id):
+            raise InterventionError("Test case hanya bisa diubah sebelum dijalankan")
+        if not cases:
+            raise ValueError("Minimal satu test case")
+        row = self.store.get_run(run_id)
+        existing = self.plan(run_id)
+        prefix = existing[0].id.rsplit("-", 1)[0] if existing else f"TC-{module_abbr(row.module or 'MOD')}"
+        renumbered = [c.model_copy(update={"id": f"{prefix}-{n:03d}", "module": row.module or c.module,
+                                           "status_ai": None, "actual": "", "ai_note": "", "severity": None})
+                      for n, c in enumerate(cases, 1)]
+        RunStore(Path(row.folder)).write_testcases(renumbered)
+        self.store.replace_cases(run_id, renumbered)
+        self.hub.publish(run_id, {"type": "cases.planned", "cases": [
+            {"tc_id": c.id, "title": c.title, "status": None} for c in renumbered]})
+        return renumbered
 
     def is_active(self, run_id: int) -> bool:
         with self._lock:
@@ -431,11 +484,13 @@ class RunManager:
             register({s.url: s.nav_path for s in app_map.screens})
         cases = rs.read_testcases() if resume else []
         if not cases:
-            cases = make_planner(rt).plan(app_map, module, row.options.get("prd_text"))
+            cases = self._reused_cases(row) or make_planner(rt).plan(app_map, module, row.options.get("prd_text"))
             rs.write_testcases(cases)
         self.store.upsert_cases(row.id, cases)
         self.hub.publish(row.id, {"type": "cases.planned",
                                   "cases": [{"tc_id": c.id, "title": c.title, "status": c.status_ai} for c in cases]})
+        if row.options.get("review_first") and not resume:
+            raise RunPaused(REVIEW_NOTE)  # QA review/edit dulu; Lanjutkan = jalankan test case hasil review
         needs_auth = not all(s.public for s in app_map.screens_for(module))
         make_runner(rt).execute(cases, needs_auth=needs_auth, public_starts={s.url for s in app_map.screens if s.public})
 

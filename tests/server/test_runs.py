@@ -189,3 +189,32 @@ def test_run_prompts_include_active_skills(env, demo):
     assert "QA Engineer profesional" in plan and "ATURAN-PLAN-123" in plan and "ATURAN-EXEC-456" not in plan
     assert "ATURAN-EXEC-456" in execute and "ATURAN-PLAN-123" not in execute
     assert not any("TIDAK-BOLEH-MUNCUL" in s for s in systems)
+
+
+def test_review_first_then_edit_and_run(env, demo):
+    """Susun test case → berhenti 'Menunggu review' → QA edit/hapus → jalankan (Lanjutkan) → hanya yang tersisa."""
+    _, store, secrets, _, manager, _ = env
+    manager.start()
+    profile, app, account = seed_demo(store, secrets, demo)
+    explore(manager, store, profile, app, account)
+    run = manager.submit(RunRequest(app_id=app.id, mode="deep", module="Pengguna", profile_id=profile.id,
+                                    account_id=account.id, environment="dev", review_first=True))
+    paused = finished(store, run.id, ("paused",))
+    from qa_agent.server.runs import REVIEW_NOTE
+
+    assert paused.note == REVIEW_NOTE
+    planned = manager.plan(run.id)
+    assert len(planned) == 3 and all(c.status_ai is None for c in planned)
+    first = planned[0].model_copy(update={"title": "Judul diedit QA"})
+    manager.update_plan(run.id, [first, planned[2]])
+    assert [c.tc_id for c in store.list_cases(run.id)] == [planned[0].id, planned[1].id]  # nomor diurutkan ulang
+    manager.resume(run.id)
+    done = finished(store, run.id)
+    cases = store.list_cases(run.id)
+    assert len(cases) == 2 and cases[0].title == "Judul diedit QA" and all(c.status_ai for c in cases)
+
+    # Regresi: ulang dengan test case yang sama (tanpa AI menyusun ulang)
+    again = manager.submit(RunRequest(app_id=app.id, mode="deep", module="Pengguna", profile_id=profile.id,
+                                      account_id=account.id, environment="dev", reuse_cases_from=done.id))
+    finished(store, again.id)
+    assert [c.title for c in store.list_cases(again.id)] == [c.title for c in cases]

@@ -15,6 +15,7 @@ vi.mock("@/lib/api", async (orig) => {
       appModules: vi.fn(),
       createApp: vi.fn(),
       createRun: vi.fn(),
+      getRun: vi.fn(),
     },
   };
 });
@@ -62,6 +63,37 @@ describe("Run baru", () => {
       device_serial: null,
     });
     expect(await screen.findByTestId("navigated")).toBeInTheDocument();
+  });
+
+  it("Review test case dulu ikut terkirim untuk Satu modul", async () => {
+    mocked.listApps.mockResolvedValue([app]);
+    mocked.appModules.mockResolvedValue({ modules: ["Pengguna"], explored: true });
+    mocked.createRun.mockResolvedValue({ id: 43 } as never);
+    renderWithProviders(<RunNewPage />, { path: "/runs/new?app=3", route: "/runs/new" });
+    const user = userEvent.setup();
+    expect(screen.queryByRole("switch", { name: /Review test case dulu/ })).not.toBeInTheDocument(); // hanya Satu modul
+    const card = await screen.findByRole("radio", { name: /Satu modul/ });
+    await waitFor(() => expect(card).toBeEnabled());
+    await user.click(card);
+    await user.selectOptions(await screen.findByLabelText("Modul"), "Pengguna");
+    await user.click(screen.getByRole("switch", { name: /Review test case dulu/ }));
+    await user.click(screen.getByRole("button", { name: /Mulai run/ }));
+    await waitFor(() => expect(mocked.createRun).toHaveBeenCalled());
+    expect(mocked.createRun.mock.calls[0][0]).toMatchObject({ mode: "deep", module: "Pengguna", review_first: true });
+  });
+
+  it("?reuse= memakai test case run sebelumnya (regresi) dan memilih modulnya", async () => {
+    mocked.listApps.mockResolvedValue([app]);
+    mocked.appModules.mockResolvedValue({ modules: ["Dashboard", "Pengguna"], explored: true });
+    mocked.getRun.mockResolvedValue({ id: 9, app_id: 3, module: "Pengguna" } as never);
+    mocked.createRun.mockResolvedValue({ id: 44 } as never);
+    renderWithProviders(<RunNewPage />, { path: "/runs/new?app=3&reuse=9", route: "/runs/new" });
+    const user = userEvent.setup();
+    expect(await screen.findByText(/Memakai test case yang sama dengan run #9/)).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByLabelText("Modul")).toHaveValue("Pengguna"));
+    await user.click(screen.getByRole("button", { name: /Mulai run/ }));
+    await waitFor(() => expect(mocked.createRun).toHaveBeenCalled());
+    expect(mocked.createRun.mock.calls[0][0]).toMatchObject({ mode: "deep", module: "Pengguna", reuse_cases_from: 9 });
   });
 
   it("URL baru dibuat sebagai aplikasi sebelum run", async () => {

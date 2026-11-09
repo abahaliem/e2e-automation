@@ -28,7 +28,7 @@ import { Alert, Button } from "@/components/ui";
 import { ApiError, api } from "@/lib/api";
 import { cn } from "@/lib/cn";
 import { duration, scopeLabel } from "@/lib/format";
-import type { ControlInput, Snapshot, Status, StepEvent } from "@/lib/types";
+import { REVIEW_NOTE, type ControlInput, type Snapshot, type Status, type StepEvent } from "@/lib/types";
 import { useRunStream } from "@/lib/ws";
 
 function useNow(intervalMs = 1000): Date {
@@ -131,6 +131,7 @@ export function RunLivePage() {
   };
 
   const r = run.data;
+  const awaitingReview = Boolean(r?.awaiting_review) || (snapshot?.note ?? "") === REVIEW_NOTE;
   const progress =
     r?.mode === "explore"
       ? `${snapshot?.screens ?? 0} layar dipetakan`
@@ -191,7 +192,19 @@ export function RunLivePage() {
 
       <div className="flex flex-col gap-2 px-5 [&:not(:empty)]:pt-3">
         {error && <Alert tone="error">{error}</Alert>}
-        {status === "paused" && (
+        {status === "paused" && awaitingReview && (
+          <Alert
+            tone="info"
+            action={
+              <Link to={`/runs/${runId}/review`} className="inline-flex h-8 items-center rounded-lg bg-accent px-3 text-xs font-semibold text-white">
+                Review test case
+              </Link>
+            }
+          >
+            <span className="font-medium">Test case sudah disusun.</span> Review, edit, atau hapus dulu sebelum dijalankan.
+          </Alert>
+        )}
+        {status === "paused" && !awaitingReview && (
           <Alert
             tone="warning"
             action={

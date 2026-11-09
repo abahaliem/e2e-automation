@@ -14,6 +14,7 @@ import { NotFoundPage } from "@/pages/NotFound";
 import { RunLivePage } from "@/pages/RunLive";
 import { RunNewPage } from "@/pages/RunNew";
 import { RunResultPage } from "@/pages/RunResult";
+import { RunReviewPage } from "@/pages/RunReview";
 import { SettingsPage } from "@/pages/Settings";
 
 const LOCAL: AuthStatus = { auth_required: false, user: null };
@@ -59,6 +60,7 @@ function Shell() {
         <Route path="runs" element={<HistoryPage />} />
         <Route path="runs/new" element={<RunNewPage />} />
         <Route path="runs/:runId/result" element={<RunResultPage />} />
+        <Route path="runs/:runId/review" element={<RunReviewPage />} />
         <Route path="apps" element={<AppsPage />} />
         <Route path="devices" element={<DevicesPage />} />
         <Route path="settings" element={<SettingsPage />} />

@@ -6,7 +6,7 @@ from fastapi import APIRouter, Request
 from pydantic import BaseModel, Field
 
 from qa_agent.server.api import deps
-from qa_agent.server.runs import RunRequest
+from qa_agent.server.runs import REVIEW_NOTE, RunRequest
 from qa_agent.server.store import RunRow
 
 router = APIRouter(prefix="/api", tags=["runs"])
@@ -25,6 +25,26 @@ class RunIn(BaseModel):
     apk_file: str | None = Field(default=None, max_length=255)
     apk_grant: bool = True
     apk_uninstall: bool = False
+    review_first: bool = False
+    reuse_cases_from: int | None = None
+
+
+class PlanCaseIn(BaseModel):
+    id: str | None = None
+    title: str = Field(max_length=300)
+    page: str = Field(default="", max_length=200)
+    type: Literal["positif", "negatif", "validasi", "boundary", "navigasi"] = "positif"
+    priority: Literal["High", "Medium", "Low"] = "Medium"
+    precondition: str = Field(default="", max_length=2000)
+    test_data: str = Field(default="", max_length=2000)
+    steps: list[str] = Field(default_factory=list, max_length=50)
+    expected: str = Field(max_length=2000)
+    expected_source: Literal["PRD", "Inferensi AI"] = "Inferensi AI"
+    start_url: str = Field(max_length=500)
+
+
+class PlanIn(BaseModel):
+    cases: list[PlanCaseIn] = Field(max_length=100)
 
 
 class ControlIn(BaseModel):
@@ -47,6 +67,9 @@ def run_out(request: Request, row: RunRow) -> dict:
     data["confirm_each_step"] = bool(row.options.get("confirm_each_step"))
     data["device_serial"] = row.options.get("device_serial")
     data["created_by"] = row.options.get("created_by")
+    data["review_first"] = bool(row.options.get("review_first"))
+    data["reuse_cases_from"] = row.options.get("reuse_cases_from")
+    data["awaiting_review"] = row.status == "paused" and row.note == REVIEW_NOTE
     data["active"] = manager.is_active(row.id)
     data["control_state"] = manager.control(row.id).state if data["active"] else None
     profile = store.get_profile(row.profile_id) if row.profile_id else None
@@ -110,6 +133,51 @@ def control_run(run_id: int, body: ControlIn, request: Request) -> dict:
     deps.get_run_or_404(request, run_id)
     return deps.manager(request).command(run_id, body.command, text=body.text, status=body.status, note=body.note,
                                          event=body.event)
+
+
+def _plan_out(request: Request, run_id: int) -> dict:
+    from pathlib import Path
+
+    from qa_agent.evidence import RunStore
+
+    row = deps.get_run_or_404(request, run_id)
+    manager = deps.manager(request)
+    app_map = RunStore(Path(row.folder)).read_app_map()
+    screens = [{"url": s.url, "page_name": s.page_name} for s in (app_map.screens_for(row.module or "") if app_map else [])]
+    return {"editable": manager.plan_editable(run_id), "module": row.module,
+            "cases": [c.model_dump() for c in manager.plan(run_id)], "screens": screens}
+
+
+@router.get("/runs/{run_id}/plan")
+def get_plan(run_id: int, request: Request) -> dict:
+    """Test case hasil susunan AI untuk direview sebelum dijalankan, beserta layar modul (pilihan layar awal)."""
+    return _plan_out(request, run_id)
+
+
+@router.put("/runs/{run_id}/plan")
+def put_plan(run_id: int, body: PlanIn, request: Request) -> dict:
+    from qa_agent.agent.control import InterventionError
+    from qa_agent.models import QaTestCase
+
+    plan = _plan_out(request, run_id)
+    if not plan["editable"]:
+        raise InterventionError("Test case hanya bisa diubah sebelum dijalankan")
+    if not body.cases:
+        raise ValueError("Minimal satu test case")
+    screens = {s["url"] for s in plan["screens"]}
+    cases = []
+    for n, c in enumerate(body.cases, 1):
+        steps = [s.strip() for s in c.steps if s.strip()]
+        if not c.title.strip() or not steps or not c.expected.strip():
+            raise ValueError(f"Test case ke-{n}: judul, langkah, dan expected result wajib diisi")
+        if screens and c.start_url not in screens:
+            raise ValueError(f"Test case ke-{n}: Layar awal harus salah satu layar modul ini")
+        cases.append(QaTestCase(id=c.id or f"NEW-{n}", module=plan["module"] or "", page=c.page.strip(),
+                                title=c.title.strip(), type=c.type, priority=c.priority,
+                                precondition=c.precondition.strip(), test_data=c.test_data.strip(), steps=steps,
+                                expected=c.expected.strip(), expected_source=c.expected_source, start_url=c.start_url))
+    deps.manager(request).update_plan(run_id, cases)
+    return _plan_out(request, run_id)
 
 
 @router.post("/runs/{run_id}/resume")

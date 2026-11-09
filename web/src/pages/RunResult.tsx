@@ -102,6 +102,16 @@ export function RunResultPage() {
               Jalankan ulang
             </Link>
           )}
+          {r?.mode === "deep" && total > 0 && (
+            <Link
+              to={`/runs/new?app=${r.app_id}&reuse=${r.id}${r.platform === "android" ? "&platform=android" : ""}`}
+              title="Regresi: jalankan lagi test case yang sama tanpa AI menyusun ulang"
+              className="inline-flex h-10 items-center gap-2 rounded-lg border border-ink-600 bg-ink-900 px-4 text-sm hover:bg-ink-850"
+            >
+              <ArrowClockwise />
+              Ulang dengan test case sama
+            </Link>
+          )}
           <a href={api.downloadUrl(runId, "xlsx")} download className="inline-flex h-10 items-center gap-2 rounded-lg border border-ink-600 bg-ink-900 px-4 text-sm hover:bg-ink-850">
             <FileXls className="text-pass" />
             Excel
