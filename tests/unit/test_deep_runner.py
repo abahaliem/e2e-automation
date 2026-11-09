@@ -263,3 +263,24 @@ def test_error_during_auto_login_becomes_finding(tmp_path):
     cases = runner.execute([tc(1)], needs_auth=True)
     assert cases[0].status_ai == "Perlu Review"
     assert "Terjadi kesalahan server" in cases[0].ai_note and "login/logout otomatis" in cases[0].ai_note
+
+def test_valid_credential_goal_uses_saved_account():
+    from qa_agent.orchestrator.deep import goal_for
+
+    ok = QaTestCase(id="TC-AUT-001", module="Autentikasi", title="Sign In sukses dengan kredensial valid",
+                    test_data="Username: teknisi01, Password: Valid#123", expected="masuk")
+    goal = goal_for(ok)
+    assert "akun test yang tersimpan" in goal and "{{username}}" in goal
+    other = QaTestCase(id="TC-PEN-001", module="Pengguna", title="Tambah pengguna", expected="tersimpan")
+    assert "akun test yang tersimpan" not in goal_for(other)
+
+def test_valid_login_test_data_replaced_but_negative_kept():
+    from qa_agent.orchestrator.deep import valid_login_test_data
+
+    assert valid_login_test_data("Sign In sukses dengan kredensial valid", "Username: teknisi01, Password: Valid#123", []) \
+        == "Akun test tersimpan: username {{username}}, password {{password}}"
+    assert valid_login_test_data("Sign In gagal password salah", "Username: teknisi01, Password: Salah#999", []) \
+        == "Username: teknisi01, Password: Salah#999"
+    assert valid_login_test_data("Sign In dengan field kosong", "Username: (kosong), Password: (kosong)", []) \
+        == "Username: (kosong), Password: (kosong)"
+    assert valid_login_test_data("Tambah pengguna", "Nama: QA-AUTO Budi", []) == "Nama: QA-AUTO Budi"

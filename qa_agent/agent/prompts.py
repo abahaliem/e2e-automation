@@ -53,6 +53,7 @@ Aturan:
 4. Data baru diawali "<<data_prefix>>".
 5. start_url diambil dari peta layar.
 6. Jangan membuat test case login/logout kecuali modulnya memang autentikasi.
+7. Jangan mengarang akun. Kredensial akun test yang valid ditulis persis {{username}} dan {{password}} (sistem mengisinya dari akun test yang tersimpan). Nilai yang sengaja salah ditulis literal dan jelas salah, mis. Salah#12345 atau tidakterdaftar_qa.
 """
 
 
