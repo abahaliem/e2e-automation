@@ -13,7 +13,7 @@ from qa_agent.agent.control import InterventionError
 from qa_agent.server.events import EventHub
 from qa_agent.server.runs import LLMFactory, RunManager
 from qa_agent.server.secrets import KeyringSecretStore, SecretStore, SecretStoreUnavailable
-from qa_agent.server.settings import ServerSettings, configure_playwright_browsers
+from qa_agent.server.settings import ServerSettings, configure_adb, configure_playwright_browsers
 from qa_agent.server.store import Store
 
 STATIC_DIR = Path(__file__).parent / "static"
@@ -51,8 +51,14 @@ def _validation_response(errors: list[dict]) -> JSONResponse:
 
 
 def create_app(settings: ServerSettings, *, secrets: SecretStore | None = None,
-               llm_factory: LLMFactory | None = None) -> FastAPI:
-    """`llm_factory` hanya untuk test (AI palsu); tidak bisa diaktifkan dari CLI."""
+               llm_factory: LLMFactory | None = None, adb_factory=None) -> FastAPI:
+    """`llm_factory` dan `adb_factory` hanya untuk test (AI/adb palsu); tidak bisa diaktifkan dari CLI."""
+    configure_adb(settings)
+    if adb_factory is None:
+        from qa_agent.drivers.adb import Adb
+
+        def adb_factory(serial: str | None = None):
+            return Adb(serial=serial)
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
@@ -73,6 +79,7 @@ def create_app(settings: ServerSettings, *, secrets: SecretStore | None = None,
     app.state.settings = settings
     app.state.secrets = secrets or KeyringSecretStore()
     app.state.llm_factory = llm_factory
+    app.state.adb_factory = adb_factory
 
     @app.exception_handler(RequestValidationError)
     async def _req_validation(request: Request, exc: RequestValidationError):
@@ -101,9 +108,9 @@ def create_app(settings: ServerSettings, *, secrets: SecretStore | None = None,
                       f"({exc})"})
 
     from qa_agent.server import ws
-    from qa_agent.server.api import apps, profiles, results, runs, stats
+    from qa_agent.server.api import apps, devices, profiles, results, runs, stats
 
-    for module in (apps, profiles, runs, results, stats, ws):
+    for module in (apps, profiles, runs, results, stats, devices, ws):
         app.include_router(module.router)
 
     @app.api_route("/api/{rest:path}", methods=["GET", "POST", "PATCH", "DELETE", "PUT"], include_in_schema=False)

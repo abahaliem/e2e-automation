@@ -3,7 +3,9 @@ from __future__ import annotations
 from typing import Literal
 
 from fastapi import APIRouter, Request, Response
-from pydantic import BaseModel, Field, field_validator
+import re
+
+from pydantic import BaseModel, Field, ValidationInfo, field_validator
 
 from qa_agent.server.api import deps
 from qa_agent.server.store import AccountRow, AppRow
@@ -13,6 +15,20 @@ router = APIRouter(prefix="/api", tags=["apps"])
 
 def _clean_list(values: list[str] | None) -> list[str]:
     return [v.strip() for v in (values or []) if v and v.strip()]
+
+
+ANDROID_URL = re.compile(r"android://[A-Za-z][\w]*(\.[A-Za-z_][\w]*)+")
+
+
+def validate_target(url: str, platform: str) -> str:
+    url = url.strip().rstrip("/")
+    if platform == "android":
+        if not ANDROID_URL.fullmatch(url):
+            raise ValueError("Paket aplikasi Android tidak valid (contoh: android://com.perusahaan.aplikasi)")
+        return url
+    if not url.startswith(("http://", "https://")):
+        raise ValueError("URL harus diawali http:// atau https://")
+    return url
 
 
 class AppIn(BaseModel):
@@ -25,11 +41,8 @@ class AppIn(BaseModel):
 
     @field_validator("url")
     @classmethod
-    def _url(cls, v: str) -> str:
-        v = v.strip()
-        if not v.startswith(("http://", "https://")):
-            raise ValueError("URL harus diawali http:// atau https://")
-        return v.rstrip("/")
+    def _url(cls, v: str, info: ValidationInfo) -> str:
+        return validate_target(v, info.data.get("platform", "web"))
 
 
 class AppPatch(BaseModel):
@@ -42,7 +55,7 @@ class AppPatch(BaseModel):
     @field_validator("url")
     @classmethod
     def _url(cls, v: str | None) -> str | None:
-        return None if v is None else AppIn._url(v)
+        return None if v is None else v.strip().rstrip("/")
 
 
 class AccountIn(BaseModel):
@@ -100,9 +113,18 @@ def get_app(app_id: int, request: Request) -> dict:
 @router.patch("/apps/{app_id}")
 def patch_app(app_id: int, body: AppPatch, request: Request) -> dict:
     store = deps.store(request)
-    if store.get_app(app_id) is None:
+    current = store.get_app(app_id)
+    if current is None:
         raise deps.not_found("Aplikasi")
     fields = body.model_dump(exclude_unset=True)
+    if fields.get("url") is not None:
+        try:
+            fields["url"] = validate_target(fields["url"], current.platform)
+        except ValueError as e:
+            from fastapi.responses import JSONResponse
+
+            return JSONResponse(status_code=422, content={"detail": "Periksa kembali isian form",
+                                                          "field_errors": {"url": str(e)}})
     for key in ("allowed_domains", "login_endpoints"):
         if key in fields:
             fields[key] = _clean_list(fields[key])
