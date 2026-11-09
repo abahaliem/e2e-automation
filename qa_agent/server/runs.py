@@ -144,8 +144,12 @@ class RunManager:
                 raise ValueError(f"Modul '{(req.module or '').strip()}' tidak ditemukan. "
                                  f"Modul yang tersedia: {', '.join(app_map.modules())}")
             options["source_run"] = explore.id
-            if req.prd_text:
-                options["prd_text"] = req.prd_text
+            # PRD yang diunggah saat explore dipakai bila run modul tidak mengunggah PRD baru
+            prd = req.prd_text or explore.options.get("prd_text")
+            if prd:
+                options["prd_text"] = prd
+        elif req.prd_text:
+            options["prd_text"] = req.prd_text
         label = module or urlsplit(app.url).netloc or app.name  # android://paket → nama paket
         folder = RunStore.create(self.settings.runs_dir, req.mode, label).root
         row = self.store.create_run(app_id=app.id, mode=req.mode, module=module, environment=req.environment,

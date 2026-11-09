@@ -78,6 +78,20 @@ describe("Run baru", () => {
     expect(mocked.createRun.mock.calls[0][0]).toMatchObject({ app_id: 11, mode: "explore" });
   });
 
+  it("PRD selalu tampil (mockup 01) dan ikut dikirim saat run Seluruh aplikasi", async () => {
+    mocked.listApps.mockResolvedValue([app]);
+    mocked.appModules.mockResolvedValue({ modules: [], explored: false });
+    mocked.createRun.mockResolvedValue({ id: 3 } as never);
+    renderWithProviders(<RunNewPage />, { path: "/runs/new?app=3", route: "/runs/new" });
+    const user = userEvent.setup();
+    const input = await screen.findByLabelText("File PRD");
+    await user.upload(input, new File(["# PRD\nEmail wajib valid"], "prd-pengguna.md", { type: "text/markdown" }));
+    expect(await screen.findByText("prd-pengguna.md")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /Mulai run/ }));
+    await waitFor(() => expect(mocked.createRun).toHaveBeenCalled());
+    expect(mocked.createRun.mock.calls[0][0]).toMatchObject({ mode: "explore", prd_text: "# PRD\nEmail wajib valid" });
+  });
+
   it("URL tidak valid ditolak", async () => {
     mocked.listApps.mockResolvedValue([]);
     renderWithProviders(<RunNewPage />);
