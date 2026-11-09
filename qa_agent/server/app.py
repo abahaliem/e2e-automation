@@ -149,12 +149,16 @@ def create_app(settings: ServerSettings, *, secrets: SecretStore | None = None,
             try:
                 target = (root / full_path).resolve()
                 target.relative_to(root)
-                if target.is_file():
-                    return FileResponse(target)
+                if target.is_file() and target != index:
+                    # Aset Vite bernama hash (index-AbC123.js): aman disimpan lama di cache browser
+                    hashed = target.parent.name == "assets"
+                    return FileResponse(target, headers={
+                        "Cache-Control": "public, max-age=31536000, immutable" if hashed else "no-cache"})
             except (ValueError, OSError):
                 pass
         if index.is_file():
-            return FileResponse(index)
+            # index.html selalu diperiksa ulang supaya dashboard versi baru langsung terpakai setelah update
+            return FileResponse(index, headers={"Cache-Control": "no-cache"})
         return JSONResponse(status_code=404, content={
             "detail": "Frontend belum di-build. Jalankan: npm --prefix web install && npm --prefix web run build"})
 
