@@ -108,7 +108,7 @@ def test_apps_and_accounts(ctx):
     assert r.status_code == 200 and secrets.get(f"account:{acc['id']}") == "baru!"
     assert client.delete(f"/api/accounts/{acc['id']}").status_code == 204
     assert secrets.get(f"account:{acc['id']}") is None
-    assert client.get(f"/api/apps/{app['id']}/modules").json() == {"modules": [], "explored": False}
+    assert client.get(f"/api/apps/{app['id']}/modules").json() == {"modules": [], "explored": False, "flows": []}
     assert client.delete(f"/api/apps/{app['id']}").status_code == 204
     assert client.get(f"/api/apps/{app['id']}").status_code == 404
 

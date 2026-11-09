@@ -355,3 +355,6 @@ export type MapScreen = {
   screenshot_url: string | null;
 };
 export type RunMap = { modules: { name: string; screens: MapScreen[] }[]; screens: number };
+
+// ---------- modul kustom (alur bisnis) ----------
+export type Flow = { id: number; app_id: number; name: string; steps: string; created_at: string; updated_at: string };

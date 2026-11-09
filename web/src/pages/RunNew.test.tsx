@@ -144,3 +144,18 @@ describe("Hasil penjelajahan", () => {
     await waitFor(() => expect(screen.getByLabelText("Modul")).toHaveValue("Pengguna"));
   });
 });
+
+describe("Alur bisnis di Run baru", () => {
+  it("alur muncul di pilihan modul dan bisa dipilih lewat ?module=", async () => {
+    mocked.listApps.mockResolvedValue([app]);
+    mocked.appModules.mockResolvedValue({ modules: ["Pengguna"], explored: true, flows: [{ id: 5, name: "Alur tambah pengguna" }] });
+    mocked.createRun.mockResolvedValue({ id: 50 } as never);
+    renderWithProviders(<RunNewPage />, { path: "/runs/new?app=3&module=Alur%20tambah%20pengguna", route: "/runs/new" });
+    const user = userEvent.setup();
+    await waitFor(() => expect(screen.getByLabelText("Modul")).toHaveValue("Alur tambah pengguna"));
+    expect(screen.getByRole("option", { name: "Alur: Alur tambah pengguna" })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /Mulai run/ }));
+    await waitFor(() => expect(mocked.createRun).toHaveBeenCalled());
+    expect(mocked.createRun.mock.calls[0][0]).toMatchObject({ mode: "deep", module: "Alur tambah pengguna" });
+  });
+});

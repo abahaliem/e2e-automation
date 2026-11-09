@@ -89,7 +89,8 @@ export function GuidePage() {
         <>
           Setelah dipetakan, pilih <b>Satu modul</b> dan modulnya (mis. Autentikasi). Unggah <b>PRD</b> (.md/.txt) bila ada supaya
           expected result mengikuti PRD. Aktifkan <b>Review test case dulu</b> supaya kamu bisa menghapus, mengedit, atau
-          menambah test case sebelum dijalankan.
+          menambah test case sebelum dijalankan. Untuk proses yang melintasi beberapa menu (mis. buka work order sampai closed),
+          buat <b>Alur bisnis</b> di halaman <b>Aplikasi</b>; alur itu muncul sebagai pilihan modul.
         </>
       ),
     },

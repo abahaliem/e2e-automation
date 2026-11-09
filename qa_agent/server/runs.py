@@ -70,6 +70,20 @@ class RunRequest:
     reuse_cases_from: int | None = None  # regresi: pakai test case run lain (tanpa AI menyusun ulang)
 
 
+def flow_app_map(app_map: AppMap, flow_name: str) -> AppMap:
+    """Alur bisnis bisa melintasi modul: semua layar hasil penjelajahan dipakai sebagai layar alur."""
+    return AppMap(target=app_map.target,
+                  screens=[s.model_copy(update={"module": flow_name}) for s in app_map.screens])
+
+
+def flow_requirements(name: str, steps: str, *, prd: str | None = None) -> str:
+    text = (f'## Alur bisnis "{name}" (ditulis QA)\n{steps.strip()}\n\n'
+            "Susun test case untuk alur ini: minimal satu skenario positif end-to-end dari langkah pertama sampai "
+            "terakhir (langkah boleh melewati beberapa layar), lalu skenario negatif/validasi pada langkah-langkah "
+            "penting. Expected result mengikuti alur di atas.")
+    return f"{text}\n\n{prd}" if prd else text
+
+
 @dataclass
 class _Active:
     run_id: int
@@ -167,12 +181,17 @@ class RunManager:
             if req.review_first:
                 options["review_first"] = True
             module = app_map.find_module(req.module or "")
-            if module is None:
+            flow = None if module else self.store.find_flow(app.id, req.module or "")
+            if module is None and flow is None:
                 raise ValueError(f"Modul '{(req.module or '').strip()}' tidak ditemukan. "
                                  f"Modul yang tersedia: {', '.join(app_map.modules())}")
             options["source_run"] = explore.id
             # PRD yang diunggah saat explore dipakai bila run modul tidak mengunggah PRD baru
             prd = req.prd_text or explore.options.get("prd_text")
+            if flow is not None:  # modul kustom: alur yang ditulis QA menjadi kebutuhan utama
+                module = flow.name
+                options["flow_id"] = flow.id
+                prd = flow_requirements(flow.name, flow.steps, prd=req.prd_text)
             if prd:
                 options["prd_text"] = prd
         elif req.prd_text:
@@ -499,6 +518,8 @@ class RunManager:
         app_map = RunStore(Path(source.folder)).read_app_map() if source else rs.read_app_map()
         if app_map is None:
             raise RunPaused("Hasil explore sumber tidak ditemukan. Jalankan Seluruh aplikasi lagi")
+        if row.options.get("flow_id"):  # modul kustom (alur bisnis): semua layar aplikasi
+            app_map = flow_app_map(app_map, row.module or "Alur")
         module = app_map.find_module(row.module or "") or (row.module or "")
         rs.write_app_map(app_map)
         register = getattr(rt.driver, "register_paths", None)
