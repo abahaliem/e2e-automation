@@ -64,6 +64,7 @@ class AndroidDriver:
         self.frame_interval = frame_interval
         self.login_mode = False  # kompatibel dengan WebDriver (tidak ada filter jaringan di Android)
         self.keeps_login = True  # membuka ulang aplikasi tidak menghapus sesi login (beda dengan konteks browser baru)
+        self.back_probe = True  # explorer boleh menekan Kembali untuk menutup popup/form yang menutupi layar lain
         self._recording: list[dict] | None = None
         self._transient: list[str] = []  # teks error dari popup/snackbar yang tampil sesaat setelah tap
         self.frame_workers = 2  # screencap HP lambat (~0,3-0,8 dtk): dua pengambil bergantian supaya live lebih mulus
@@ -136,6 +137,10 @@ class AndroidDriver:
     def replay_steps(self, steps: list[dict]) -> bool:
         """Putar ulang tap yang direkam. False bila ada langkah yang tidak ditemukan di layar."""
         for step in steps:
+            if step.get("key") == "back":
+                self.adb.keyevent(KEY_BACK)
+                self._sleep(self.settle_seconds)
+                continue
             el = None
             for _ in range(3):  # beri waktu menu/dialog muncul
                 el = self._find_step(step, self._dump())
@@ -291,6 +296,11 @@ class AndroidDriver:
         self.new_session(None)
         i = 0
         while i < len(target):
+            if target[i].get("key") == "back":
+                self.adb.keyevent(KEY_BACK)
+                self._sleep(self.settle_seconds)
+                i += 1
+                continue
             elements = self._dump()
             if self._is_login(elements):
                 return  # sesi login habis: biarkan AuthManager login dulu, lalu goto dipanggil lagi
@@ -388,6 +398,10 @@ class AndroidDriver:
                 self._scroll(action.value != "up")
             elif kind == "back":
                 self.adb.keyevent(KEY_BACK)
+                # Kembali juga bagian jalur (mis. menutup popup yang menutupi halaman utama)
+                self._pending = (origin, {"key": "back"})
+                if self._recording is not None:
+                    self._recording.append({"key": "back"})
             elif kind == "navigate":
                 self.goto(action.value or "/")
             elif kind == "wait":

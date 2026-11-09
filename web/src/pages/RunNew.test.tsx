@@ -35,7 +35,7 @@ describe("Run baru", () => {
     renderWithProviders(<RunNewPage />, { path: "/runs/new?app=3" });
     const card = await screen.findByRole("radio", { name: /Satu modul/ });
     await waitFor(() => expect(card).toBeDisabled());
-    expect(screen.getByText("Jalankan Seluruh aplikasi dulu untuk memetakan modul")).toBeInTheDocument();
+    expect(await screen.findByText("Web HR belum dipetakan. Jalankan Seluruh aplikasi dulu untuk memetakan modul")).toBeInTheDocument();
   });
 
   it("mengirim body run sesuai API dan pindah ke layar live", async () => {
