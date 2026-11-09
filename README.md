@@ -56,6 +56,21 @@ npm --prefix web install
 npm --prefix web run build
 ```
 
+## Android
+
+QA Agent menguji aplikasi Android di **HP sungguhan lewat kabel USB**, atau di emulator yang sedang berjalan, memakai `adb`. Tidak ada aplikasi pembantu yang dipasang di HP.
+
+1. **Pasang adb** (sekali): unduh *SDK Platform-Tools for Windows* dari developer.android.com, lalu ekstrak sehingga ada `%USERPROFILE%\QA Agent\platform-tools\adb.exe`. QA Agent menemukannya otomatis. adb di PATH atau di Android SDK juga terdeteksi.
+2. **Siapkan HP:** Setelan → Tentang ponsel → ketuk *Nomor bentukan* 7 kali → Opsi pengembang → aktifkan **Debugging USB**. Sambungkan kabel, lalu ketuk **Izinkan** di HP. Cek di menu **Perangkat**.
+3. **Run baru → Android:** pilih perangkat, lalu pilih aplikasi yang sudah terpasang atau **Upload APK** (dipasang otomatis). Alurnya sama dengan web: Seluruh aplikasi dulu, lalu Satu modul.
+
+Catatan:
+- Layar live memakai screenshot beruntun (sekitar 1–3 fps). Ambil alih mendukung tap, ketik, tombol (Enter/Back), dan swipe.
+- Crash aplikasi dan dialog "tidak merespons" / "telah berhenti" otomatis menjadi bukti Fail.
+- Explore mencatat urutan tap ke setiap layar, sehingga run modul bisa langsung membuka layar awal test case.
+- Mode production di Android hanya memblok aksi berisiko berdasarkan nama tombol. Request jaringan aplikasi tidak bisa dicegat, jadi tetap pakai akun dan data uji.
+- Keterbatasan: mengetik huruf non-ASCII (mis. é) belum didukung, menyalakan emulator dari dashboard belum ada, dan WebView diuji seadanya.
+
 ## Alur kerja CLI
 
 1. **Petakan aplikasi:** `qa-agent explore`
@@ -93,7 +108,7 @@ npm --prefix web run build
 
 ## Keterbatasan
 
-Saat ini hanya untuk web. Belum mendukung OTP/2FA/CAPTCHA, login yang disimpan di sessionStorage (agent akan login ulang tiap test case), elemen canvas, shadow DOM tertutup, iframe lintas domain, PRD selain `.md`/`.txt`, maupun template Excel kustom. Screenshot di laporan bisa berisi data aplikasi (termasuk password, jika AI menekan tombol "lihat password"), jadi perlakukan laporan sebagai dokumen internal.
+Web dan Android (lihat bagian Android untuk batasannya). Untuk web belum mendukung OTP/2FA/CAPTCHA, login yang disimpan di sessionStorage (agent akan login ulang tiap test case), elemen canvas, shadow DOM tertutup, iframe lintas domain, PRD selain `.md`/`.txt`, maupun template Excel kustom. Screenshot di laporan bisa berisi data aplikasi (termasuk password, jika AI menekan tombol "lihat password"), jadi perlakukan laporan sebagai dokumen internal.
 
 ## Pengembangan
 
