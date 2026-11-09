@@ -210,11 +210,36 @@ def test_android_public_case_logs_out_first(tmp_path):
     assert driver.current == url("login")
 
 
-def test_android_logout_failure_blocks_with_clear_message(tmp_path):
-    runner, loop, _ = make_android(tmp_path, {"TC-AUT-001": PASS}, works=False)
+def test_android_logout_failure_lets_agent_try_with_explanation(tmp_path):
+    blocked = LoopOutcome(final="blocked", reason="tombol logout tidak ada")
+    runner, loop, _ = make_android(tmp_path, {"TC-AUT-001": blocked}, works=False)
+    goals = []
+    original = loop.run
+    loop.run = lambda tc_id, goal, **kw: (goals.append((tc_id, goal)), original(tc_id, goal, **kw))[1]
     cases = runner.execute([login_case(1)], needs_auth=False)
-    assert cases[0].status_ai == "Blocked" and "logout" in cases[0].actual.lower()
-    assert not any(c[0] == "TC-AUT-001" for c in loop.calls)
+    goal = dict(goals)["TC-AUT-001"]
+    assert "tidak bisa dibuka otomatis" in goal and "logout" in goal.lower()  # agent tahu masalahnya & bisa diarahkan QA
+    assert cases[0].status_ai == "Blocked" and cases[0].actual == "tombol logout tidak ada"
+
+
+def test_unreachable_start_lets_agent_try_then_skips_same_start_quickly(tmp_path):
+    from qa_agent.agent.control import RunControl
+
+    control = RunControl()
+    blocked = LoopOutcome(final="blocked", reason="Form Reason Lembur tidak muncul")
+    runner, loop, _, driver, _ = make(tmp_path, {"TC-PEN-001": blocked, "TC-PEN-002": PASS, "TC-PEN-003": PASS},
+                                      control=control)
+    a, b = tc(1), tc(2)
+    a.start_url = b.start_url = url("lembur")  # layar kondisional yang tidak tercatat di driver
+    cases = runner.execute([a, b], needs_auth=False)
+    assert [c[0] for c in loop.calls] == ["TC-PEN-001"]  # TC-002 tidak menghabiskan waktu AI lagi
+    assert cases[1].status_ai == "Blocked" and "TC-PEN-001" in cases[1].actual
+    # dengan arahan QA tertunda, test case berikutnya tetap dicoba agent
+    c = tc(3)
+    c.start_url = url("lembur")
+    control.hint("buka menu Lembur di menu samping")
+    runner.execute([c], needs_auth=False)
+    assert loop.calls[-1][0] == "TC-PEN-003"
 
 
 def test_case_with_logged_in_precondition_uses_auth(tmp_path):

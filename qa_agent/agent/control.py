@@ -158,6 +158,10 @@ class RunControl:
             self._inputs.append(dict(event))
             self._cond.notify_all()
 
+    def has_hints(self) -> bool:
+        with self._cond:
+            return bool(self._hints)
+
     def drain_hints(self) -> list[str]:
         with self._cond:
             hints, self._hints = self._hints, []
