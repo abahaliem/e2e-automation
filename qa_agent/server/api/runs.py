@@ -95,6 +95,20 @@ def get_run(run_id: int, request: Request) -> dict:
     return run_out(request, deps.get_run_or_404(request, run_id))
 
 
+@router.delete("/runs/{run_id}", status_code=204)
+def delete_run(run_id: int, request: Request):
+    from fastapi import Response
+
+    deps.get_run_or_404(request, run_id)
+    manager = deps.manager(request)
+    if manager.is_active(run_id):
+        from qa_agent.agent.control import InterventionError
+
+        raise InterventionError("Run masih berjalan. Hentikan dulu sebelum dihapus")
+    manager.delete(run_id)
+    return Response(status_code=204)
+
+
 def state_snapshot(state, run_id: int) -> dict | None:
     """Snapshot kondisi run untuk REST dan WebSocket. `state` = app.state."""
     row = state.store.get_run(run_id)

@@ -574,6 +574,12 @@ class Store:
                     (run_id, c.id, c.module, c.title, c.type, c.status_ai, c.status_final, c.severity, start + n))
             self._db.commit()
 
+    def delete_run(self, run_id: int) -> None:
+        with self._lock:
+            self._db.execute("DELETE FROM test_cases_index WHERE run_id=?", (run_id,))
+            self._db.execute("DELETE FROM runs WHERE id=?", (run_id,))
+            self._db.commit()
+
     def replace_cases(self, run_id: int, cases: list[QaTestCase]) -> None:
         """Indeks test case diganti total (review: ada yang dihapus/diurutkan ulang)."""
         with self._lock:
