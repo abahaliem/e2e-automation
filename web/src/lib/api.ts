@@ -1,5 +1,6 @@
 import type {
   Account,
+  ApkUpload,
   App,
   AppInput,
   CaseDetailResponse,
@@ -113,6 +114,12 @@ export const api = {
     get<{ packages: string[]; apps?: { package: string; version: string | null }[] }>(
       `/api/devices/${encodeURIComponent(serial)}/packages`,
     ),
+  uploadApk: (serial: string, file: File) =>
+    request<ApkUpload>(`/api/devices/${encodeURIComponent(serial)}/apk?filename=${encodeURIComponent(file.name)}`, {
+      method: "POST",
+      body: file,
+      headers: { "content-type": "application/octet-stream" },
+    }),
   deviceScreenUrl: (serial: string, tick: number) => `/api/devices/${encodeURIComponent(serial)}/screen?t=${tick}`,
   installApk: (serial: string, file: File) =>
     request<InstallResult>(`/api/devices/${encodeURIComponent(serial)}/install?filename=${encodeURIComponent(file.name)}`, {

@@ -1,4 +1,4 @@
-﻿import { AndroidLogo, BookmarkSimple, FileArrowUp, Globe, GlobeSimple, MapTrifold, Play, ShieldWarning, Target, X } from "@phosphor-icons/react";
+import { AndroidLogo, BookmarkSimple, FileArrowUp, Globe, GlobeSimple, MapTrifold, Play, ShieldWarning, Target, X } from "@phosphor-icons/react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useState, type DragEvent, type FormEvent } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
@@ -7,7 +7,7 @@ import { PlatformIcon } from "@/components/RunBits";
 import { Alert, Button, Field, PageHeader, Select, Switch } from "@/components/ui";
 import { ApiError, api } from "@/lib/api";
 import { cn } from "@/lib/cn";
-import type { App, RunInput } from "@/lib/types";
+import type { ApkChoice, App, RunInput } from "@/lib/types";
 import { timeAgo } from "@/lib/format";
 
 const normalizeUrl = (u: string) => u.trim().replace(/\/+$/, "").toLowerCase();
@@ -20,6 +20,7 @@ export function RunNewPage() {
 
   const [platform, setPlatform] = useState<"web" | "android">(params.get("platform") === "android" ? "android" : "web");
   const [serial, setSerial] = useState("");
+  const [apk, setApk] = useState<ApkChoice | null>(null);
   const [url, setUrl] = useState("");
   const [appId, setAppId] = useState<number | null>(null);
   const [profileId, setProfileId] = useState<number | null>(null);
@@ -126,6 +127,7 @@ export function RunNewPage() {
         environment,
         confirm_each_step: confirmEach,
         device_serial: platform === "android" ? serial : null,
+        ...(platform === "android" && apk ? { apk_file: apk.file, apk_grant: apk.grant, apk_uninstall: apk.uninstall } : {}),
       };
       return api.createRun(body);
     },
@@ -160,6 +162,43 @@ export function RunNewPage() {
     e.preventDefault();
     void readPrd(e.dataTransfer.files?.[0]);
   };
+
+  const profileField = (
+    <Field label="Profil AI" htmlFor="run-profile">
+      <Select id="run-profile" value={profileId ?? ""} onChange={(e) => setProfileId(Number(e.target.value))}>
+        {(profiles.data ?? []).map((p) => (
+          <option key={p.id} value={p.id}>
+            {p.name}
+          </option>
+        ))}
+      </Select>
+    </Field>
+  );
+  const accountField = (
+    <Field
+      label="Akun test"
+      htmlFor="run-account"
+      hint={
+        url && (!matched || accounts.data?.length === 0)
+          ? "Aplikasi ini belum punya akun test. Klik Simpan aplikasi lalu isi akunnya bila aplikasi butuh login."
+          : undefined
+      }
+    >
+      <Select
+        id="run-account"
+        value={accountId ?? ""}
+        disabled={!matched || !accounts.data?.length}
+        onChange={(e) => setAccountId(e.target.value ? Number(e.target.value) : null)}
+      >
+        {!accounts.data?.length && <option value="">Tanpa login</option>}
+        {(accounts.data ?? []).map((a) => (
+          <option key={a.id} value={a.id}>
+            {a.role} · {a.username}
+          </option>
+        ))}
+      </Select>
+    </Field>
+  );
 
   return (
     <main className="flex flex-col gap-8 px-10 py-8">
@@ -196,7 +235,14 @@ export function RunNewPage() {
       <div className={cn("grid gap-10", platform === "android" ? "grid-cols-[minmax(0,1fr)_300px]" : "grid-cols-[minmax(0,1fr)_340px]")}>
         <form onSubmit={submit} noValidate className="flex flex-col gap-7">
           {platform === "android" ? (
-            <AndroidTarget serial={serial} onSerial={setSerial} pkg={androidPackage} onPackage={setAndroidPackage} error={errors.package} />
+            <AndroidTarget
+              serial={serial}
+              onSerial={setSerial}
+              pkg={androidPackage}
+              onPackage={setAndroidPackage}
+              error={errors.package}
+              onApk={setApk}
+            />
           ) : (
           <Field
             label="URL aplikasi"
@@ -222,39 +268,46 @@ export function RunNewPage() {
           </Field>
           )}
 
+          {platform === "android" ? (
+            <>
+              <div className="grid grid-cols-3 gap-5">
+                {profileField}
+                <Field
+                  label="Yang diuji"
+                  htmlFor="run-scope"
+                  error={errors.module}
+                  hint={!explored ? "Jalankan Seluruh aplikasi dulu untuk menguji satu modul" : undefined}
+                >
+                  <Select
+                    id="run-scope"
+                    value={mode === "deep" ? `deep:${module}` : "explore"}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      if (v === "explore") {
+                        setMode("explore");
+                        setModule("");
+                      } else {
+                        setMode("deep");
+                        setModule(v.slice("deep:".length));
+                      }
+                    }}
+                  >
+                    <option value="explore">Seluruh aplikasi</option>
+                    {(modules.data?.modules ?? []).map((m) => (
+                      <option key={m} value={`deep:${m}`}>
+                        Modul {m}
+                      </option>
+                    ))}
+                  </Select>
+                </Field>
+                {accountField}
+              </div>
+            </>
+          ) : (
+          <>
           <div className="grid grid-cols-3 gap-5">
-            <Field label="Profil AI" htmlFor="run-profile">
-              <Select id="run-profile" value={profileId ?? ""} onChange={(e) => setProfileId(Number(e.target.value))}>
-                {(profiles.data ?? []).map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name}
-                  </option>
-                ))}
-              </Select>
-            </Field>
-            <Field
-              label="Akun test"
-              htmlFor="run-account"
-              hint={
-                url && (!matched || accounts.data?.length === 0)
-                  ? "Aplikasi ini belum punya akun test. Klik Simpan aplikasi lalu isi akunnya bila aplikasi butuh login."
-                  : undefined
-              }
-            >
-              <Select
-                id="run-account"
-                value={accountId ?? ""}
-                disabled={!matched || !accounts.data?.length}
-                onChange={(e) => setAccountId(e.target.value ? Number(e.target.value) : null)}
-              >
-                {!accounts.data?.length && <option value="">Tanpa login</option>}
-                {(accounts.data ?? []).map((a) => (
-                  <option key={a.id} value={a.id}>
-                    {a.role} · {a.username}
-                  </option>
-                ))}
-              </Select>
-            </Field>
+            {profileField}
+            {accountField}
             <div className="flex flex-col gap-1.5">
               <span className="text-sm font-medium" id="env-label">
                 Environment
@@ -286,9 +339,7 @@ export function RunNewPage() {
           </div>
           {environment === "production" && (
             <Alert tone="warning">
-              {platform === "android"
-                ? "Mode production di Android: aksi bertanda simpan, hapus, kirim, bayar, dan sejenisnya diblok. Berbeda dengan web, request jaringan aplikasi tidak bisa dicegat, jadi tetap pakai akun dan data uji."
-                : "Mode production: agent tidak akan menyimpan, menghapus, atau mengirim data. Semua request pengubah data diblok di level jaringan, kecuali login."}
+              Mode production: agent tidak akan menyimpan, menghapus, atau mengirim data. Semua request pengubah data diblok di level jaringan, kecuali login.
             </Alert>
           )}
 
@@ -327,6 +378,8 @@ export function RunNewPage() {
                 ))}
               </Select>
             </Field>
+          )}
+          </>
           )}
 
           <div className="flex flex-col gap-2">
