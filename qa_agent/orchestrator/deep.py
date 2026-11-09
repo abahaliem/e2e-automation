@@ -135,11 +135,26 @@ class DeepPlanner:
             cases.append(QaTestCase(
                 id=f"TC-{abbr}-{len(cases) + 1:03d}", module=module, page=planned.page, title=planned.title,
                 type=planned.type, priority=planned.priority, precondition=planned.precondition,
-                test_data=planned.test_data, steps=planned.steps, expected=planned.expected,
+                test_data=valid_login_test_data(planned.title, planned.test_data, planned.steps),
+                steps=planned.steps, expected=planned.expected,
                 expected_source=planned.expected_source if has_prd else "Inferensi AI",
                 start_url=_resolve_start(planned, screens),
             ))
         return cases
+
+
+_PASSWORD_IN_DATA = re.compile(r"password|kata sandi", re.IGNORECASE)
+_EMPTY = re.compile(r"kosong|empty|blank", re.IGNORECASE)
+
+
+def valid_login_test_data(title: str, test_data: str, steps: list[str]) -> str:
+    """Test case login sukses memakai akun test tersimpan, bukan akun karangan AI.
+    Data karangan hanya dipertahankan untuk skenario gagal (kredensial salah / field kosong)."""
+    text = " ".join([title, test_data, *steps])
+    if (not test_data or not _PASSWORD_IN_DATA.search(test_data) or _NEGATIVE_CREDENTIAL.search(text)
+            or _EMPTY.search(text)):
+        return test_data
+    return "Akun test tersimpan: username {{username}}, password {{password}}"
 
 
 def judge(outcome: LoopOutcome, tc: QaTestCase) -> tuple[str, str | None]:
@@ -166,11 +181,20 @@ _NEGATIVE_CREDENTIAL = re.compile(
     r"|wrong password|invalid credential|tidak terdaftar", re.IGNORECASE)
 
 
+_CREDENTIAL_WORDS = re.compile(r"password|kata sandi|username|user ?name|kredensial|sign ?in|log ?in|masuk", re.IGNORECASE)
+
+
 def goal_for(tc: QaTestCase) -> str:
     steps = "\n".join(f"{i}. {s}" for i, s in enumerate(tc.steps, 1)) or "-"
-    negative = _NEGATIVE_CREDENTIAL.search(" ".join([tc.title, tc.test_data, *tc.steps]))
+    text = " ".join([tc.title, tc.test_data, *tc.steps])
+    negative = _NEGATIVE_CREDENTIAL.search(text)
     reminder = ("\nPENTING: ini skenario kredensial salah. {{password}} dan {{username}} adalah kredensial yang BENAR, "
-                "jadi untuk nilai yang harus salah ketik teks literal (mis. Salah#12345 / tidakterdaftar_qa).\n") if negative else ""
+                "jadi untuk nilai yang harus salah ketik teks literal (mis. Salah#12345 / tidakterdaftar_qa). "
+                "Bagian yang memang valid (mis. username valid) tetap pakai {{username}}.\n") if negative else ""
+    if _CREDENTIAL_WORDS.search(text):
+        reminder += ("\nKredensial VALID selalu dari akun test yang tersimpan: ketik {{username}} dan {{password}}. "
+                     "Abaikan contoh username/password di test data bila itu untuk akun yang valid (contoh itu karangan, "
+                     "bukan akun sungguhan).\n")
     return (
         f"Jalankan test case {tc.id}: {tc.title}\n{reminder}"
         f"Tipe: {tc.type}\n"
