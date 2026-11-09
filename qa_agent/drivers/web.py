@@ -11,7 +11,7 @@ from playwright.sync_api import TimeoutError as PlaywrightTimeout
 from playwright.sync_api import sync_playwright
 
 from qa_agent import imaging
-from qa_agent.drivers.base import DriverCrashed
+from qa_agent.drivers.base import DriverCrashed, missing_credential
 from qa_agent.drivers.web_dom import EXTRACT_JS, UI_ERROR_JS, to_element
 from qa_agent.models import Action, ActionResult, Element, Observation, Signal
 from qa_agent.orchestrator.fingerprint import fingerprint
@@ -402,6 +402,9 @@ class WebDriver:
             if kind == "click":
                 self._locator(element).click()
             elif kind == "type":
+                missing = missing_credential(action.value, self._credentials)
+                if missing:
+                    return ActionResult(ok=False, error=missing)
                 self._locator(element).fill(self._resolve(action.value, allow_password=element.input_type == "password"))
             elif kind == "select":
                 self._select(self._locator(element), action.value or "")

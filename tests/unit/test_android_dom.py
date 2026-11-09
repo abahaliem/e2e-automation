@@ -75,3 +75,16 @@ def test_screen_key_stable_for_dynamic_text_but_differs_per_screen():
     c = parse_ui(hierarchy(node("android.widget.Button", text="Batal", rid="x:id/cancel")))
     assert screen_key(a) == screen_key(b) != screen_key(c)
     assert len(screen_key(a)) == 8
+
+
+def test_unnamed_flutter_inputs_get_distinct_names():
+    # Flutter: EditText tanpa text/hint/id/desc (label hanya tergambar di layar)
+    xml = hierarchy(
+        node("android.widget.EditText", text="", rid="", bounds="[31,635][1049,791]"),
+        node("android.widget.EditText", text="", rid="", password=True, bounds="[31,832][1049,977]"),
+        node("android.widget.EditText", text="", rid="", bounds="[31,1000][1049,1100]"),
+        node("android.widget.Button", text="", desc="Sign In", bounds="[349,1074][731,1176]"),
+    )
+    names = [(e.role, e.name, e.input_type) for e in parse_ui(xml)]
+    assert names[:3] == [("input", "Isian 1", None), ("input", "Password", "password"), ("input", "Isian 2", None)]
+    assert names[3] == ("button", "Sign In", None)
