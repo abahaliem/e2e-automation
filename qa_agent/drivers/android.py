@@ -19,7 +19,7 @@ from PIL import Image
 from qa_agent import imaging
 from qa_agent.drivers.adb import AdbError
 from qa_agent.drivers.android_dom import parse_ui, screen_key
-from qa_agent.drivers.base import DriverCrashed
+from qa_agent.drivers.base import DriverCrashed, missing_credential
 from qa_agent.models import Action, ActionResult, Element, Observation, Signal
 from qa_agent.orchestrator.fingerprint import fingerprint
 
@@ -301,8 +301,12 @@ class AndroidDriver:
                         return ActionResult(ok=False, error=f"Opsi '{action.value}' tidak ditemukan")
                     self.adb.tap(*_center(target))
             elif kind == "type":
+                missing = missing_credential(action.value, self._credentials)
+                if missing:
+                    return ActionResult(ok=False, error=missing)
                 value = self._resolve(action.value, allow_password=element.input_type == "password")  # type: ignore[union-attr]
                 self.adb.tap(*_center(element))  # type: ignore[arg-type]
+                self._sleep(0.4)  # beri waktu keyboard HP terhubung ke field (penting untuk Flutter/Compose)
                 existing = 32 if element.input_type == "password" else len(element.value or "") + 4  # type: ignore[union-attr]
                 self._keys(KEY_MOVE_END, *([KEY_DEL] * existing))
                 self.adb.text(value)

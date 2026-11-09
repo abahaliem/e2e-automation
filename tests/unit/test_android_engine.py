@@ -99,3 +99,14 @@ def test_build_runtime_android(tmp_path):
     assert isinstance(rt.driver, AndroidDriver)
     assert rt.driver.adb.serial == "R58M123" and rt.driver.package == "com.demo.app"
     assert rt.loop.platform == "android"
+
+
+def test_login_without_account_fails_fast_with_clear_message(tmp_path):
+    from qa_agent.orchestrator.auth import LoginFailed
+
+    llm = FakeLLM([])
+    rt = build_runtime(android_cfg(), RunStore(tmp_path / "r"), tmp_path, environment="dev", llm=llm,
+                       credentials=Credentials(role="default", username="", password=""), device_serial="X")
+    with pytest.raises(LoginFailed, match="akun test"):
+        rt.auth.login()
+    assert llm.calls == []  # AI tidak dipanggil sia-sia

@@ -221,3 +221,12 @@ def test_replay_stops_at_login_screen_for_auth_to_handle():
     d.goto(home.location)  # tidak menekan MASUK dengan form kosong
     assert adb.current == "LOGIN"
     assert not [c for c in adb.calls[-3:] if c[0] == "tap"]
+
+
+def test_typing_empty_credential_is_reported():
+    d, adb = make()
+    d.set_credentials("", "")
+    obs = d.observe()
+    result = d.execute(Action(action="type", element=1, value="{{username}}"), find(obs, "Email"))
+    assert not result.ok and not result.fatal and "akun test" in result.error.lower()
+    assert not [c for c in adb.calls if c[0] == "text"]

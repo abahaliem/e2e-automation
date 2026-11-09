@@ -59,6 +59,7 @@ def parse_ui(xml: str, max_elements: int = 80, screen: tuple[int, int] | None = 
     consumed: set[int] = set()
     found: list[tuple[int, bool, Element]] = []  # (urutan, interaktif, elemen)
     order = 0
+    unnamed_inputs = 0
     for node in root.iter("node"):
         order += 1
         if id(node) in consumed:
@@ -74,7 +75,14 @@ def parse_ui(xml: str, max_elements: int = 80, screen: tuple[int, int] | None = 
         rid = node.get("resource-id") or ""
         password = _flag(node, "password")
         if role == "input":
-            name = (node.get("hint") or "").strip() or desc or _rid_label(rid) or text
+            name = (node.get("hint") or "").strip() or desc or _rid_label(rid) or ("" if password else text)
+            if not name:
+                # Flutter: label hanya tergambar di layar. Beri nama yang bisa dibedakan, AI melihat labelnya di gambar.
+                if password:
+                    name = "Password"
+                else:
+                    unnamed_inputs += 1
+                    name = f"Isian {unnamed_inputs}"
             value = "******" if password and text else (text or None)
         else:
             name = text or desc

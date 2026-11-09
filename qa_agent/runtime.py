@@ -16,7 +16,7 @@ from qa_agent.evidence import Masker, RunStore
 from qa_agent.guard import Guard
 from qa_agent.llm.base import LLMClient
 from qa_agent.llm.factory import build_llm
-from qa_agent.orchestrator.auth import AuthManager, auth_state_path
+from qa_agent.orchestrator.auth import AuthManager, LoginFailed, auth_state_path
 from qa_agent.orchestrator.deep import DeepPlanner, DeepRunner
 from qa_agent.orchestrator.explore import Explorer
 
@@ -91,6 +91,9 @@ def build_runtime(cfg: Config, store: RunStore, project_dir: Path, *, environmen
     login_loop = AgentLoop(**common)
 
     def run_login(tc_id: str, goal: str):
+        if not creds.username and not creds.password:
+            raise LoginFailed("Aplikasi menampilkan halaman login, tetapi run ini tidak memakai akun test. "
+                              "Tambahkan akun test di menu Aplikasi, lalu pilih akunnya di Run baru")
         driver.login_mode = True  # endpoint login hanya dibuka selama alur login
         try:
             return login_loop.run(tc_id, goal, login=True)

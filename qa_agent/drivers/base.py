@@ -10,6 +10,15 @@ class DriverCrashed(Exception):
     """Browser/device tertutup atau tidak bisa dipakai lagi."""
 
 
+def missing_credential(value: str | None, credentials: dict[str, str]) -> str | None:
+    """Pesan error bila teks memakai {{username}}/{{password}} tetapi akun test tidak diatur untuk run ini."""
+    for placeholder in ("{{username}}", "{{password}}"):
+        if placeholder in (value or "") and not credentials.get(placeholder):
+            return (f"Akun test belum diatur untuk run ini, jadi {placeholder} kosong. "
+                    "Tambahkan akun test di menu Aplikasi lalu pilih di Run baru.")
+    return None
+
+
 class Driver(Protocol):
     def start(self) -> None: ...
     def stop(self) -> None: ...
