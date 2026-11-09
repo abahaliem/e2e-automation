@@ -161,3 +161,14 @@ def test_package_versions_single_command():
     a, r = adb({"pm list packages -3": (0, out, b"")})
     assert a.package_versions() == {"com.a": "3.8.1", "com.b": "2.4.0-dev", "com.c": None}
     assert len(r.calls) == 1
+
+
+def test_install_without_grant_and_uninstall():
+    a, r = adb({"install": (0, b"Success\n", b""), "uninstall": (0, b"Success\n", b"")})
+    a.install("x.apk", grant=False)
+    assert r.calls[-1][3:] == ["install", "-r", "x.apk"]
+    a.uninstall("com.demo.app")
+    assert r.calls[-1][3:] == ["uninstall", "com.demo.app"]
+    a2, _ = adb({"uninstall": (0, b"Failure [DELETE_FAILED_INTERNAL_ERROR]\n", b"")})
+    with pytest.raises(AdbError, match="Gagal menghapus"):
+        a2.uninstall("com.demo.app")

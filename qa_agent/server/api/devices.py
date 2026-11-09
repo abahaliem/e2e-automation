@@ -77,11 +77,14 @@ def device_screen(serial: str, request: Request):
     return Response(content=jpeg, media_type="image/jpeg", headers={"cache-control": "no-store"})
 
 
-@router.post("/devices/{serial}/install")
-async def install_apk(serial: str, request: Request, filename: str = "aplikasi.apk"):
+def _invalid(message: str) -> JSONResponse:
+    return JSONResponse(status_code=422, content={"detail": message, "field_errors": {"file": message}})
+
+
+async def _save_upload(request: Request, filename: str):
+    """Simpan unggahan APK ke <data>/apks. Mengembalikan Path atau JSONResponse error."""
     if not filename.lower().endswith(".apk"):
-        return JSONResponse(status_code=422, content={"detail": "File harus berformat .apk",
-                                                      "field_errors": {"file": "File harus berformat .apk"}})
+        return _invalid("File harus berformat .apk")
     folder = deps.settings(request).data_dir / "apks"
     folder.mkdir(parents=True, exist_ok=True)
     safe = re.sub(r"[^A-Za-z0-9._-]+", "-", filename).strip("-") or "aplikasi.apk"
@@ -93,11 +96,41 @@ async def install_apk(serial: str, request: Request, filename: str = "aplikasi.a
             if size > MAX_APK_BYTES:
                 f.close()
                 target.unlink(missing_ok=True)
-                return JSONResponse(status_code=422, content={"detail": "APK lebih dari 300 MB", "field_errors": {}})
+                return _invalid("APK lebih dari 300 MB")
             f.write(chunk)
     if size == 0:
         target.unlink(missing_ok=True)
-        return JSONResponse(status_code=422, content={"detail": "File APK kosong", "field_errors": {}})
+        return _invalid("File APK kosong")
+    return target
+
+
+@router.post("/devices/{serial}/apk")
+async def upload_apk(serial: str, request: Request, filename: str = "aplikasi.apk"):
+    """Mockup 02b: unggah APK, baca paket & versinya. Dipasang saat run dimulai."""
+    from qa_agent.drivers.apk import ApkError, read_apk_info
+
+    target = await _save_upload(request, filename)
+    if isinstance(target, JSONResponse):
+        return target
+    try:
+        info = read_apk_info(target)
+    except ApkError as e:
+        target.unlink(missing_ok=True)
+        return _invalid(f"File APK tidak bisa dibaca: {e}")
+    installed = None
+    try:
+        installed = _adb(request, serial).package_versions().get(info.package)
+    except AdbError:
+        installed = None
+    return {"file": target.name, "package": info.package, "version": info.version_name,
+            "version_code": info.version_code, "size_bytes": info.size_bytes, "installed_version": installed}
+
+
+@router.post("/devices/{serial}/install")
+async def install_apk(serial: str, request: Request, filename: str = "aplikasi.apk"):
+    target = await _save_upload(request, filename)
+    if isinstance(target, JSONResponse):
+        return target
     adb = _adb(request, serial)
     try:
         before = set(adb.packages(third_party=True))

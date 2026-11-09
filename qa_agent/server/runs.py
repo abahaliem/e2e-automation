@@ -59,6 +59,9 @@ class RunRequest:
     environment: Literal["dev", "production"] = "dev"
     confirm_each_step: bool = False
     device_serial: str | None = None
+    apk_file: str | None = None  # nama file di <data>/apks (hasil unggah), dipasang saat run dimulai
+    apk_grant: bool = True
+    apk_uninstall: bool = False
 
 
 @dataclass
@@ -133,6 +136,11 @@ class RunManager:
             if not (req.device_serial or "").strip():
                 raise ValueError("Pilih perangkat Android (HP atau emulator) untuk run ini")
             options["device_serial"] = req.device_serial.strip()  # type: ignore[union-attr]
+            if req.apk_file:
+                name = Path(req.apk_file).name
+                if name != req.apk_file or not (self.settings.data_dir / "apks" / name).is_file():
+                    raise ValueError("File APK tidak ditemukan. Unggah ulang APK-nya")
+                options.update(apk_file=name, apk_grant=req.apk_grant, apk_uninstall=req.apk_uninstall)
         module = None
         if req.mode == "deep":
             explore = self.store.latest_completed_explore(app.id)
@@ -357,6 +365,7 @@ class RunManager:
             active.control.idle = lambda: (self._sync_stream(active), driver.pump(100))
             driver.start()
             active.driver = driver
+            self._install_apk(row, driver)
             self._sync_stream(active)
             if row.mode == "explore":
                 make_explorer(rt).run()
@@ -381,7 +390,29 @@ class RunManager:
                     rt.driver.stop()
                 except Exception:
                     pass
+                if row.options.get("apk_uninstall") and status in ("completed", "interrupted"):
+                    try:  # run selesai/terhenti: hapus aplikasi sesuai opsi (dijeda: biarkan untuk dilanjutkan)
+                        rt.driver.adb.uninstall(rt.driver.package)
+                    except Exception as e:
+                        note = f"{note} (aplikasi gagal dihapus: {e})".strip()
             self._finish(run_id, rs, meta, status, note)
+
+    def _install_apk(self, row: RunRow, driver: Any) -> None:
+        """Mockup 02b: APK hasil unggah dipasang ke HP saat run dimulai (sekali; resume tidak memasang ulang)."""
+        name = row.options.get("apk_file")
+        if not name or row.options.get("apk_installed"):
+            return
+        from qa_agent.drivers.adb import AdbError
+
+        path = self.settings.data_dir / "apks" / name
+        self.hub.publish(row.id, {"type": "run.status", "status": "running", "counts": row.counts,
+                                  "note": f"Memasang {name} ke HP..."})
+        try:
+            driver.adb.install(str(path), grant=bool(row.options.get("apk_grant", True)))
+        except AdbError as e:
+            raise RunPaused(f"Gagal memasang APK: {e}") from e
+        self.store.update_run(row.id, options={**row.options, "apk_installed": True})
+        self.hub.publish(row.id, {"type": "run.status", "status": "running", "counts": row.counts, "note": ""})
 
     def _run_deep(self, rt, rs: RunStore, row: RunRow, resume: bool) -> None:
         source = self.store.get_run(int(row.options.get("source_run", 0)))

@@ -144,11 +144,18 @@ class Adb:
             versions[parts[0]] = match.group(1) if match else None
         return dict(sorted(versions.items()))
 
-    def install(self, apk_path: str) -> None:
-        out = self._cmd("install", "-r", "-g", str(apk_path), timeout=300).decode("utf-8", "replace")
+    def install(self, apk_path: str, grant: bool = True) -> None:
+        """Pasang (atau timpa) APK. `grant` = beri semua izin runtime otomatis."""
+        flags = ["-r", "-g"] if grant else ["-r"]
+        out = self._cmd("install", *flags, str(apk_path), timeout=300).decode("utf-8", "replace")
         if "Success" not in out:
             failure = re.search(r"Failure \[([^\]]+)\]", out)
             raise AdbError(f"Gagal memasang APK: {failure.group(1) if failure else out.strip()[:300]}")
+
+    def uninstall(self, package: str) -> None:
+        out = self._cmd("uninstall", package, timeout=120).decode("utf-8", "replace")
+        if "Success" not in out:
+            raise AdbError(f"Gagal menghapus aplikasi {package}: {out.strip()[:200]}")
 
     def launch(self, package: str) -> None:
         out = self.shell(f"monkey -p {package} -c android.intent.category.LAUNCHER 1")
