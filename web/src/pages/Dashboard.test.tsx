@@ -9,7 +9,7 @@ import { HistoryPage } from "./History";
 
 vi.mock("@/lib/api", async (orig) => {
   const mod = await orig<typeof import("@/lib/api")>();
-  return { ...mod, api: { ...mod.api, stats: vi.fn(), listRuns: vi.fn(), findings: vi.fn(), listApps: vi.fn(), resumeRun: vi.fn() } };
+  return { ...mod, api: { ...mod.api, stats: vi.fn(), listRuns: vi.fn(), findings: vi.fn(), listApps: vi.fn(), resumeRun: vi.fn(), runState: vi.fn() } };
 });
 vi.mock("@/lib/ws", async (orig) => {
   const mod = await orig<typeof import("@/lib/ws")>();
@@ -57,6 +57,28 @@ describe("Dashboard", () => {
     );
     act(() => handler?.({ type: "run.status", run_id: 9, status: "running" }));
     expect(await screen.findByRole("link", { name: /Lihat live/ })).toHaveAttribute("href", "/runs/9");
+  });
+
+  it("kartu Sedang berjalan (mockup 05): cuplikan layar, progres test case, timer", async () => {
+    mocked.listRuns.mockImplementation(async (params) =>
+      params?.status === "completed" ? [] : [{ ...run, status: "running", active: true, control_state: "running" }],
+    );
+    mocked.runState.mockResolvedValue({
+      type: "snapshot", run_id: 9, seq: 5, status: "running", control_state: "running", awaiting_confirm: false,
+      confirm_each_step: false, note: "", counts: {}, current_tc: "TC-PEN-003", planned: null, steps: [], screens: 0,
+      cases: [
+        { tc_id: "TC-PEN-001", title: "a", status: "Pass" },
+        { tc_id: "TC-PEN-002", title: "b", status: "Fail" },
+        { tc_id: "TC-PEN-003", title: "c", status: null },
+        { tc_id: "TC-PEN-004", title: "d", status: null },
+      ],
+    });
+    renderWithProviders(<DashboardPage />);
+    expect(await screen.findByText("Test case 3 dari 4")).toBeInTheDocument();
+    const img = screen.getByAltText(/Layar live run Web HR/);
+    expect(img.getAttribute("src")).toContain("/api/runs/9/thumbnail");
+    expect(screen.getByTestId("run-timer").textContent).toMatch(/^\d{2}:\d{2}|^\d+:\d{2}:\d{2}/);
+    expect(screen.getByRole("progressbar")).toHaveAttribute("aria-valuenow", "50");
   });
 
   it("tabel Selesai dengan tombol dokumen", async () => {
