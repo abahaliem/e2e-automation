@@ -392,3 +392,45 @@ export type Hook = {
   has_headers: boolean;
 };
 export type HookInput = { name: string; when: Hook["when"]; method: Hook["method"]; url: string; headers: string; body: string; capture: string };
+
+// ---------- uji beban (performance) ----------
+export type PerfRequestCfg = {
+  name: string;
+  method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE" | "HEAD";
+  url: string;
+  headers: Record<string, string>;
+  body: string;
+  weight: number;
+  expect_status: number | null;
+};
+export type PerfConfig = {
+  requests: PerfRequestCfg[];
+  profile: { vus: number; duration_s: number; ramp_up_s: number; think_ms: number };
+  thresholds: { p95_ms: number | null; error_rate_pct: number | null };
+  environment: "dev" | "production";
+  approved_hosts: string[];
+};
+export type PerfTest = { id: number; app_id: number; name: string; config: PerfConfig; has_secret_headers: boolean; updated_at: string };
+export type PerfTestInput = Omit<PerfConfig, never> & { name: string; secret_headers?: string };
+export type PerfPoint = { elapsed_s: number; vus: number; requests: number; rps: number; errors: number; p95_ms: number; total: number };
+export type PerfStats = { p50_ms: number; p90_ms: number; p95_ms: number; p99_ms: number; min_ms: number; max_ms: number; avg_ms: number };
+export type PerfSummary = PerfStats & { total: number; errors: number; error_rate_pct: number; rps: number; duration_s: number; vus: number };
+export type PerfResult = {
+  summary?: PerfSummary;
+  requests?: (PerfStats & { name: string; method: string; url: string; count: number; errors: number; error_rate_pct: number; status_codes: Record<string, number> })[];
+  status_codes?: Record<string, number>;
+  timeline?: PerfPoint[];
+  verdict?: { passed: boolean; checks: { name: string; target: string; actual: string; passed: boolean }[] };
+};
+export type PerfRun = {
+  id: number;
+  test_id: number;
+  name: string;
+  status: "running" | "completed" | "stopped" | "failed";
+  config: PerfConfig;
+  result: PerfResult;
+  note: string;
+  started_at: string;
+  finished_at: string | null;
+};
+export type PerfRunBrief = Omit<PerfRun, "result"> & { summary: PerfSummary | null; passed: boolean | null };

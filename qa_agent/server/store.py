@@ -69,6 +69,27 @@ CREATE TABLE IF NOT EXISTS skills (
   active INTEGER NOT NULL DEFAULT 1,
   created_at TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS perf_tests (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  app_id INTEGER NOT NULL REFERENCES apps(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  config TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS perf_runs (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  test_id INTEGER NOT NULL,
+  app_id INTEGER NOT NULL,
+  name TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'running',
+  config TEXT NOT NULL DEFAULT '{}',
+  result TEXT NOT NULL DEFAULT '{}',
+  note TEXT NOT NULL DEFAULT '',
+  created_by TEXT,
+  started_at TEXT NOT NULL,
+  finished_at TEXT
+);
 CREATE TABLE IF NOT EXISTS test_data (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   app_id INTEGER NOT NULL REFERENCES apps(id) ON DELETE CASCADE,
@@ -455,6 +476,70 @@ class Store:
         return [s for s in self.list_skills()
                 if s.active and (not s.app_ids or app_id in s.app_ids) and set(s.stages) & set(stages)]
 
+    # ---------- uji beban (performance) ----------
+    @staticmethod
+    def _perf(row: sqlite3.Row | None, *json_fields: str) -> dict | None:
+        if row is None:
+            return None
+        d = dict(row)
+        for f in json_fields:
+            d[f] = json.loads(d[f] or "{}")
+        return d
+
+    def create_perf_test(self, *, app_id: int, name: str, config: dict) -> dict:
+        now = now_iso()
+        cur = self._exec("INSERT INTO perf_tests (app_id, name, config, created_at, updated_at) VALUES (?,?,?,?,?)",
+                         (app_id, name.strip(), json.dumps(config), now, now))
+        return self.get_perf_test(cur.lastrowid)  # type: ignore[return-value]
+
+    def get_perf_test(self, test_id: int) -> dict | None:
+        return self._perf(self._one("SELECT * FROM perf_tests WHERE id=?", (test_id,)), "config")
+
+    def list_perf_tests(self, app_id: int) -> list[dict]:
+        return [self._perf(r, "config") for r in self._all("SELECT * FROM perf_tests WHERE app_id=? ORDER BY id",
+                                                            (app_id,))]  # type: ignore[misc]
+
+    def update_perf_test(self, test_id: int, *, name: str, config: dict) -> dict:
+        self._exec("UPDATE perf_tests SET name=?, config=?, updated_at=? WHERE id=?",
+                   (name.strip(), json.dumps(config), now_iso(), test_id))
+        return self.get_perf_test(test_id)  # type: ignore[return-value]
+
+    def delete_perf_test(self, test_id: int) -> None:
+        with self._lock:
+            self._db.execute("DELETE FROM perf_runs WHERE test_id=?", (test_id,))
+            self._db.execute("DELETE FROM perf_tests WHERE id=?", (test_id,))
+            self._db.commit()
+
+    def create_perf_run(self, *, test_id: int, app_id: int, name: str, config: dict, created_by: str | None) -> dict:
+        cur = self._exec("INSERT INTO perf_runs (test_id, app_id, name, config, created_by, started_at) "
+                         "VALUES (?,?,?,?,?,?)", (test_id, app_id, name, json.dumps(config), created_by, now_iso()))
+        return self.get_perf_run(cur.lastrowid)  # type: ignore[return-value]
+
+    def get_perf_run(self, run_id: int) -> dict | None:
+        return self._perf(self._one("SELECT * FROM perf_runs WHERE id=?", (run_id,)), "config", "result")
+
+    def list_perf_runs(self, *, test_id: int | None = None, app_id: int | None = None, limit: int = 100) -> list[dict]:
+        sql, params = "SELECT * FROM perf_runs WHERE 1=1", []
+        if test_id is not None:
+            sql += " AND test_id=?"
+            params.append(test_id)
+        if app_id is not None:
+            sql += " AND app_id=?"
+            params.append(app_id)
+        rows = self._all(sql + " ORDER BY id DESC LIMIT ?", (*params, limit))
+        return [self._perf(r, "config", "result") for r in rows]  # type: ignore[misc]
+
+    def finish_perf_run(self, run_id: int, *, status: str, result: dict, note: str = "") -> None:
+        self._exec("UPDATE perf_runs SET status=?, result=?, note=?, finished_at=? WHERE id=?",
+                   (status, json.dumps(result), note, now_iso(), run_id))
+
+    def delete_perf_run(self, run_id: int) -> None:
+        self._exec("DELETE FROM perf_runs WHERE id=?", (run_id,))
+
+    def mark_perf_interrupted(self) -> None:
+        self._exec("UPDATE perf_runs SET status='stopped', note='Server berhenti saat uji berjalan', "
+                   "finished_at=? WHERE status='running'", (now_iso(),))
+
     # ---------- data uji ----------
     def add_test_data(self, app_id: int, set_name: str, values: list[str]) -> int:
         added = 0
@@ -650,7 +735,7 @@ class Store:
         if self._one("SELECT 1 FROM runs WHERE app_id=? LIMIT 1", (app_id,)):
             raise ValueError("Aplikasi sudah punya riwayat run. Hapus beserta riwayat run-nya untuk melanjutkan")
         with self._lock:
-            for table in ("accounts", "flows", "test_data", "hooks"):
+            for table in ("accounts", "flows", "test_data", "hooks", "perf_runs", "perf_tests"):
                 self._db.execute(f"DELETE FROM {table} WHERE app_id=?", (app_id,))
             self._db.execute("DELETE FROM apps WHERE id=?", (app_id,))
             self._db.commit()

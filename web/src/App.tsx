@@ -12,6 +12,7 @@ import { GuidePage } from "@/pages/Guide";
 import { HistoryPage } from "@/pages/History";
 import { LoginPage } from "@/pages/Login";
 import { NotFoundPage } from "@/pages/NotFound";
+import { PerformancePage } from "@/pages/Performance";
 import { RunLivePage } from "@/pages/RunLive";
 import { RunNewPage } from "@/pages/RunNew";
 import { RunResultPage } from "@/pages/RunResult";
@@ -66,6 +67,7 @@ function Shell() {
         <Route path="devices" element={<DevicesPage />} />
         <Route path="settings" element={<SettingsPage />} />
         <Route path="guide" element={<GuidePage />} />
+        <Route path="performance" element={<PerformancePage />} />
         <Route path="*" element={<NotFoundPage />} />
       </Route>
       <Route path="runs/:runId" element={<RunLivePage />} />

@@ -1,5 +1,6 @@
 import {
   BookOpenText,
+  ChartLineUp,
   ClockCounterClockwise,
   DeviceMobile,
   Gauge,
@@ -29,6 +30,7 @@ const ITEMS: Item[] = [
   },
   { to: "/apps", label: "Aplikasi", icon: SquaresFour, match: (p) => p.startsWith("/apps") },
   { to: "/devices", label: "Perangkat", icon: DeviceMobile, match: (p) => p.startsWith("/devices") },
+  { to: "/performance", label: "Performance", icon: ChartLineUp, match: (p) => p.startsWith("/performance") },
   { to: "/settings", label: "Pengaturan", icon: GearSix, match: (p) => p.startsWith("/settings") },
   { to: "/guide", label: "Panduan", icon: BookOpenText, match: (p) => p.startsWith("/guide") },
 ];

@@ -67,10 +67,15 @@ def create_app(settings: ServerSettings, *, secrets: SecretStore | None = None,
         hub = EventHub()
         manager = RunManager(store, app.state.secrets, hub, settings, llm_factory=llm_factory)
         manager.start()
-        app.state.store, app.state.hub, app.state.manager = store, hub, manager
+        from qa_agent.server.perf import PerfManager
+
+        store.mark_perf_interrupted()
+        perf = PerfManager(store, app.state.secrets)
+        app.state.store, app.state.hub, app.state.manager, app.state.perf = store, hub, manager, perf
         try:
             yield
         finally:
+            perf.shutdown()
             manager.shutdown()
             store.close()
 
@@ -132,10 +137,10 @@ def create_app(settings: ServerSettings, *, secrets: SecretStore | None = None,
         return await call_next(request)
 
     from qa_agent.server import ws
-    from qa_agent.server.api import (apps, auth, devices, profiles, report_settings, results, runs, skills, stats,
+    from qa_agent.server.api import (apps, auth, devices, perf, profiles, report_settings, results, runs, skills, stats,
                                      testdata)
 
-    for module in (auth, apps, profiles, runs, results, stats, devices, report_settings, skills, testdata, ws):
+    for module in (auth, apps, profiles, runs, results, stats, devices, report_settings, skills, testdata, perf, ws):
         app.include_router(module.router)
 
     @app.api_route("/api/{rest:path}", methods=["GET", "POST", "PATCH", "DELETE", "PUT"], include_in_schema=False)
