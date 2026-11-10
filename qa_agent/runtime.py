@@ -130,6 +130,6 @@ def make_planner(rt: Runtime) -> DeepPlanner:
                        skills=rt.skills.get("plan", ""))
 
 
-def make_runner(rt: Runtime) -> DeepRunner:
+def make_runner(rt: Runtime, *, scripts: dict | None = None, heal: bool = True, prepare_data=None) -> DeepRunner:
     return DeepRunner(driver=rt.driver, loop=rt.loop, auth=rt.auth, store=rt.store, should_stop=_should_stop(rt),
-                      on_event=rt.on_event, control=rt.control)
+                      on_event=rt.on_event, control=rt.control, scripts=scripts, heal=heal, prepare_data=prepare_data)

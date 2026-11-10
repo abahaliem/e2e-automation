@@ -55,3 +55,35 @@ def test_folder_outside_runs_dir_is_not_deleted(ctx, tmp_path):
     store.update_run(run_id, folder=str(outside))
     assert client.delete(f"/api/runs/{run_id}").status_code == 204
     assert outside.exists()  # hanya folder di dalam folder runs yang dihapus
+
+
+def test_delete_app_with_runs_removes_everything(ctx):
+    """Aplikasi yang punya riwayat run bisa dihapus beserta run, evidence, akun, alur, data uji, persiapan."""
+    from qa_agent.evidence import RunStore
+    from qa_agent.server.testdata import hook_secret_key
+
+    client, _, store, make_run = ctx
+    app_id = store.list_apps()[0].id
+    run_id, folder = make_run()
+    acc = store.create_account(app_id=app_id, role="user", username="18111337")
+    client.app.state.secrets.set(f"account:{acc.id}", "rahasia")
+    store.create_flow(app_id=app_id, name="Alur WO", steps="1. buka")
+    store.add_test_data(app_id, "wo_id", ["1"])
+    hook = store.create_hook(app_id=app_id, name="Buat WO", url="https://dev.test/wo")
+    client.app.state.secrets.set(hook_secret_key(hook.id), "{}")
+    r = client.delete(f"/api/apps/{app_id}")
+    assert r.status_code == 409 and "riwayat run" in r.json()["detail"]  # tanpa konfirmasi: ditolak
+    assert client.delete(f"/api/apps/{app_id}?with_runs=true").status_code == 204
+    assert store.get_app(app_id) is None and store.get_run(run_id) is None and not folder.exists()
+    assert store.list_flows(app_id) == [] and store.list_test_data(app_id) == [] and store.list_hooks(app_id) == []
+    assert client.app.state.secrets.get(f"account:{acc.id}") is None
+    assert client.app.state.secrets.get(hook_secret_key(hook.id)) is None
+
+
+def test_delete_app_refused_while_run_active(ctx):
+    client, app, store, make_run = ctx
+    app_id = store.list_apps()[0].id
+    run_id, folder = make_run(status="running")
+    app.state.manager.is_active = lambda rid: rid == run_id
+    r = client.delete(f"/api/apps/{app_id}?with_runs=true")
+    assert r.status_code == 409 and "berjalan" in r.json()["detail"] and folder.exists()

@@ -218,3 +218,43 @@ def test_review_first_then_edit_and_run(env, demo):
                                       account_id=account.id, environment="dev", reuse_cases_from=done.id))
     finished(store, again.id)
     assert [c.title for c in store.list_cases(again.id)] == [c.title for c in cases]
+
+def test_regression_replays_recorded_scripts_without_ai(env, demo):
+    """Run pertama (AI) merekam skrip test case Pass; regresi memutarnya tanpa AI."""
+    from pathlib import Path
+
+    from qa_agent.evidence import RunStore
+
+    _, store, secrets, _, manager, brains = env
+    manager.start()
+    profile, app, account = seed_demo(store, secrets, demo)
+    explore(manager, store, profile, app, account)
+    first = manager.submit(RunRequest(app_id=app.id, mode="deep", module="Pengguna", profile_id=profile.id,
+                                      account_id=account.id, environment="dev"))
+    done = finished(store, first.id)
+    scripts = RunStore(Path(done.folder)).read_scripts()
+    passed = [c.tc_id for c in store.list_cases(first.id) if c.status_ai == "Pass"]
+    assert passed and set(passed) <= set(scripts)
+    calls = {"n": 0}
+    make = brains.make
+
+    def counting(profile_row):
+        llm = make(profile_row)
+        original = llm.chat
+
+        def chat(system, messages):
+            if not system.startswith("MODE: LOGIN") and "Login ke aplikasi" not in (messages[0].text if messages else ""):
+                calls["n"] += 1
+            return original(system, messages)
+
+        llm.chat = chat
+        return llm
+
+    brains.make = counting
+    again = manager.submit(RunRequest(app_id=app.id, mode="deep", module="Pengguna", profile_id=profile.id,
+                                      account_id=account.id, environment="dev", reuse_cases_from=done.id))
+    regress = finished(store, again.id)
+    rs = RunStore(Path(regress.folder))
+    replayed = [c for c in rs.read_testcases() if c.id in passed]
+    assert all(c.status_ai == "Pass" and "skrip rekaman" in c.ai_note for c in replayed)
+    assert {s.actor for s in rs.read_steps() if s.tc_id in passed} == {"script"}

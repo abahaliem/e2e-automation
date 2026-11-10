@@ -4,6 +4,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { AccountsPanel } from "@/components/AccountsPanel";
 import { FlowsPanel } from "@/components/FlowsPanel";
+import { HooksPanel, TestDataPanel } from "@/components/TestDataPanel";
 import { PlatformIcon } from "@/components/RunBits";
 import { Alert, Button, Card, EmptyState, Field, Input, PageHeader, Skeleton } from "@/components/ui";
 import { ApiError, api } from "@/lib/api";
@@ -90,6 +91,8 @@ export function AppsPage() {
                 <AccountsPanel appId={current.id} />
               </Card>
               <FlowsPanel app={current} />
+              <TestDataPanel app={current} />
+              <HooksPanel app={current} />
               <ImportRuns app={current} />
             </>
           )}
@@ -124,10 +127,19 @@ function AppForm({ app, onSaved, onDeleted }: { app: App | null; onSaved: (a: Ap
       if (e instanceof ApiError) setErrors(Object.keys(e.fieldErrors).length ? e.fieldErrors : { _: e.message });
     },
   });
+  const [confirming, setConfirming] = useState(false);
+  const appRuns = useQuery({
+    queryKey: ["runs", "app", app?.id],
+    queryFn: () => api.listRuns({ app_id: app!.id, limit: 500 }),
+    enabled: confirming && !!app,
+  });
   const remove = useMutation({
-    mutationFn: () => api.deleteApp(app!.id),
+    mutationFn: () => api.deleteApp(app!.id, true),
     onSuccess: () => {
+      setConfirming(false);
       qc.invalidateQueries({ queryKey: ["apps"] });
+      qc.invalidateQueries({ queryKey: ["runs"] });
+      qc.invalidateQueries({ queryKey: ["stats"] });
       onDeleted?.();
     },
     onError: (e) => setErrors({ _: e instanceof Error ? e.message : String(e) }),
@@ -197,13 +209,32 @@ function AppForm({ app, onSaved, onDeleted }: { app: App | null; onSaved: (a: Ap
               Jalankan pengujian
             </Link>
           )}
-          {app && (
-            <Button variant="ghost" className="ml-auto text-fail! hover:bg-fail/5" onClick={() => remove.mutate()}>
+          {app && !confirming && (
+            <Button variant="ghost" className="ml-auto text-fail! hover:bg-fail/5" onClick={() => { setErrors({}); setConfirming(true); }}>
               <Trash />
               Hapus
             </Button>
           )}
         </div>
+        {app && confirming && (
+          <div role="alertdialog" aria-label="Konfirmasi hapus aplikasi" className="flex flex-col gap-3 rounded-lg border border-fail/40 bg-fail/5 p-4 text-sm">
+            <div className="font-medium text-fail">Hapus aplikasi {app.name} secara permanen?</div>
+            <div className="text-fg-muted">
+              Ikut terhapus:{" "}
+              {appRuns.isLoading
+                ? "menghitung riwayat run..."
+                : `${appRuns.data?.length ?? 0} riwayat run beserta screenshot dan dokumennya`}
+              , akun test, alur bisnis, data uji, dan persiapan otomatis. Tindakan ini tidak bisa dibatalkan.
+            </div>
+            <div className="flex gap-2">
+              <Button variant="danger" disabled={remove.isPending || appRuns.isLoading} onClick={() => remove.mutate()}>
+                <Trash />
+                {remove.isPending ? "Menghapus..." : "Ya, hapus permanen"}
+              </Button>
+              <Button onClick={() => setConfirming(false)}>Batal</Button>
+            </div>
+          </div>
+        )}
       </form>
     </Card>
   );

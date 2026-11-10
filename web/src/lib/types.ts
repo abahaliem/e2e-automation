@@ -64,7 +64,21 @@ export interface SkillsResponse {
 
 export interface ReportSettings {
   company_name: string;
-  excel_template: { name: string; columns: { header: string; maps_to: string | null }[] } | null;
+  excel_template: {
+    name: string;
+    columns: { header: string; maps_to: string | null }[];
+    /** template tata letak bebas (format kantor) */
+    sheet?: string;
+    sheets?: { name: string; header_row: number; score: number; filled: boolean }[];
+    sheet_chosen?: boolean;
+    header_row?: number;
+    capacity?: number | null;
+    status_options?: string[];
+    status_map?: Record<string, string>;
+    fields?: { label: string; key: string; auto: boolean; value: string }[];
+  } | null;
+  /** logo perusahaan di kepala laporan PDF */
+  logo?: { name: string; url: string } | null;
 }
 
 export interface Device {
@@ -157,6 +171,9 @@ export interface RunInput {
   review_first?: boolean;
   reuse_cases_from?: number | null;
   ask_before_finish?: boolean;
+  /** regresi: putar ulang skrip rekaman tanpa AI; heal = AI memperbaiki bila skrip gagal */
+  replay_scripts?: boolean;
+  heal?: boolean;
   apk_file?: string | null;
   apk_grant?: boolean;
   apk_uninstall?: boolean;
@@ -215,7 +232,7 @@ export interface TestCase {
 export interface CaseStep {
   step_no: number;
   action: string;
-  actor: "ai" | "manual";
+  actor: "ai" | "manual" | "script";
   text: string;
   result: string;
   guard: string;
@@ -271,7 +288,7 @@ export interface StepEvent {
   result: string;
   screenshot: string | null;
   description: string;
-  actor: "ai" | "manual";
+  actor: "ai" | "manual" | "script";
   seq?: number;
 }
 
@@ -358,3 +375,112 @@ export type RunMap = { modules: { name: string; screens: MapScreen[] }[]; screen
 
 // ---------- modul kustom (alur bisnis) ----------
 export type Flow = { id: number; app_id: number; name: string; steps: string; created_at: string; updated_at: string };
+
+// ---------- data uji & persiapan otomatis ----------
+export type TestDataValue = { id: number; app_id: number; set_name: string; value: string; used_by: string | null; used_at: string | null };
+export type TestDataSet = { name: string; values: TestDataValue[]; available: number };
+export type Hook = {
+  id: number;
+  app_id: number;
+  name: string;
+  when: "run" | "case";
+  method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
+  url: string;
+  body: string;
+  capture: Record<string, string>;
+  active: boolean;
+  has_headers: boolean;
+};
+export type HookInput = { name: string; when: Hook["when"]; method: Hook["method"]; url: string; headers: string; body: string; capture: string };
+
+// ---------- uji beban (performance) ----------
+export type PerfRequestCfg = {
+  name: string;
+  method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE" | "HEAD";
+  url: string;
+  headers: Record<string, string>;
+  body: string;
+  weight: number;
+  expect_status: number | null;
+};
+export type PerfConfig = {
+  requests: PerfRequestCfg[];
+  profile: { vus: number; duration_s: number; ramp_up_s: number; think_ms: number };
+  thresholds: { p95_ms: number | null; error_rate_pct: number | null };
+  environment: "dev" | "production";
+  approved_hosts: string[];
+};
+export type PerfTest = { id: number; app_id: number; name: string; config: PerfConfig; has_secret_headers: boolean; updated_at: string };
+export type PerfTestInput = Omit<PerfConfig, never> & { name: string; secret_headers?: string };
+export type PerfPoint = { elapsed_s: number; vus: number; requests: number; rps: number; errors: number; p95_ms: number; total: number };
+export type PerfStats = { p50_ms: number; p90_ms: number; p95_ms: number; p99_ms: number; min_ms: number; max_ms: number; avg_ms: number };
+export type PerfSummary = PerfStats & { total: number; errors: number; error_rate_pct: number; rps: number; duration_s: number; vus: number };
+export type PerfResult = {
+  summary?: PerfSummary;
+  requests?: (PerfStats & { name: string; method: string; url: string; count: number; errors: number; error_rate_pct: number; status_codes: Record<string, number> })[];
+  status_codes?: Record<string, number>;
+  timeline?: PerfPoint[];
+  verdict?: { passed: boolean; checks: { name: string; target: string; actual: string; passed: boolean }[] };
+};
+export type PerfRun = {
+  id: number;
+  test_id: number;
+  name: string;
+  status: "running" | "completed" | "stopped" | "failed";
+  config: PerfConfig;
+  result: PerfResult;
+  note: string;
+  started_at: string;
+  finished_at: string | null;
+};
+export type PerfRunBrief = Omit<PerfRun, "result"> & { summary: PerfSummary | null; passed: boolean | null };
+
+// ---------- API testing ----------
+export type ApiAssertionKind = "status" | "json" | "time" | "body" | "header";
+export type ApiAssertionOp = "eq" | "ne" | "contains" | "exists" | "not_exists" | "lt" | "gt" | "type";
+export type ApiAssertion = { kind: ApiAssertionKind; op: ApiAssertionOp; expected: string; path: string };
+export type ApiMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE" | "HEAD";
+export type ApiCaseCfg = {
+  name: string;
+  method: ApiMethod;
+  url: string;
+  headers: Record<string, string>;
+  body: string;
+  assertions: ApiAssertion[];
+  capture: Record<string, string>;
+};
+export type ApiSuiteConfig = {
+  base_url: string;
+  environment: "dev" | "production";
+  approved_hosts: string[];
+  variables: Record<string, string>;
+  cases: ApiCaseCfg[];
+};
+export type ApiSuite = { id: number; app_id: number; name: string; config: ApiSuiteConfig; has_secret_headers: boolean; updated_at: string };
+export type ApiSuiteInput = ApiSuiteConfig & { name: string; secret_headers?: string };
+export type ApiCheck = { description: string; passed: boolean; actual: string };
+export type ApiCaseResult = {
+  name: string;
+  request: { method: string; url: string; body: string };
+  status?: number;
+  ms?: number;
+  response?: string;
+  assertions: ApiCheck[];
+  error: string;
+  passed: boolean;
+};
+export type ApiSummary = { total: number; passed: number; failed: number; errors: number };
+export type ApiRun = {
+  id: number;
+  suite_id: number;
+  app_id: number;
+  name: string;
+  status: "running" | "completed" | "stopped" | "failed";
+  config: ApiSuiteConfig;
+  result: { cases?: ApiCaseResult[]; summary?: ApiSummary; variables?: Record<string, unknown>; total?: number };
+  note: string;
+  started_at: string;
+  finished_at: string | null;
+};
+export type ApiRunBrief = Omit<ApiRun, "result" | "config"> & { summary: ApiSummary | null };
+export type ApiImport = { cases: ApiCaseCfg[]; base_url: string; secret_headers?: string };

@@ -99,6 +99,8 @@ class AgentLoop:
         self.control = control
         self.on_event = on_event
         self.last_signals: list[Signal] = []
+        self._trace: dict = {"steps": [], "start_names": [], "end_names": [], "end_location": ""}
+        self.last_trace: dict = self._trace
 
     # ------------------------------------------------------------------
     def _emit(self, event: dict) -> None:
@@ -111,6 +113,15 @@ class AgentLoop:
         try:
             result = self._run(tc_id, goal, allow_logout=allow_logout, login=login)
             self.last_signals = list(result.signals)  # dibaca DeepRunner untuk login/logout otomatis
+            if result.final == "done":  # test case diakhiri QA: layar akhir = layar saat itu
+                trace = self._trace
+                if not trace["end_names"]:
+                    try:
+                        end = self.driver.observe()
+                        trace["end_names"], trace["end_location"] = [e.name for e in end.elements], end.location
+                    except Exception:
+                        pass
+            self.last_trace = self._trace
             return result
         finally:
             if self.control is not None:  # perintah khusus test case ini tidak terbawa ke test case berikutnya
@@ -130,6 +141,9 @@ class AgentLoop:
         step_no = 0   # nomor rekaman langkah (AI + manual)
         ai_steps = 0  # anggaran langkah AI
         obs = self.driver.observe()
+        # Trace langkah yang benar-benar dijalankan → skrip regresi tanpa AI bila test case Pass
+        self._trace = {"steps": [], "start_names": [e.name for e in obs.elements], "end_names": [],
+                       "end_location": obs.location}
 
         def outcome(**kw) -> LoopOutcome:
             return LoopOutcome(steps=step_no, guard_blocks=guard_blocks, signals=signals, **kw)
@@ -225,6 +239,8 @@ class AgentLoop:
                     continue
 
             if action.action in ("done", "blocked"):
+                self._trace["end_names"] = [e.name for e in obs.elements]
+                self._trace["end_location"] = obs.location
                 shot = self.store.save_screenshot(f"{tc_id}_step-{step_no:02d}", self.driver.screenshot())
                 self._record(tc_id, step_no, obs, action, None, "ok", shot)
                 self._emit_done(tc_id, step_no, "ok", shot, description)
@@ -262,6 +278,9 @@ class AgentLoop:
                     result = self.driver.execute(action, again)
             if result.fatal:
                 raise DriverCrashed(result.error or "Browser tertutup")
+            if result.ok:
+                self._trace["steps"].append({"action": action.action, "element": _element_dict(element),
+                                             "value": action.value})
 
             after = before if before is not None else self.driver.screenshot(
                 highlight=element if action.action in ("type", "select") else None)
@@ -301,6 +320,9 @@ class AgentLoop:
             if result.fatal:
                 raise DriverCrashed(result.error or "Browser tertutup")
             result_text = "ok" if result.ok else f"error: {result.error}"
+            trace = getattr(self, "_trace", None)
+            if result.ok and trace is not None:
+                trace["steps"].append({"manual": dict(event)})
         shot = self.store.save_screenshot(f"{tc_id}_step-{step_no:02d}", self.driver.screenshot())
         self.store.append_step(StepRecord(
             tc_id=tc_id, step_no=step_no, timestamp=now_iso(), location=self.masker.mask(obs.location) or "",

@@ -45,6 +45,14 @@ class Masker:
             text = text.replace(secret, SECRET_MASK)
         return text
 
+    def redact(self, text: str | None) -> str | None:
+        """Rahasia asli → penanda {{password}} (untuk skrip yang diputar ulang: nilai tetap bisa diisi sistem)."""
+        if text is None:
+            return None
+        for secret in self._secrets:
+            text = text.replace(secret, "{{password}}")
+        return text
+
 
 class RunStore:
     """Satu folder run: screenshot, steps.jsonl, testcases.json, app_map.json, run.json, laporan."""
@@ -150,6 +158,22 @@ class RunStore:
         if not self.testcases_path.exists():
             return []
         return [QaTestCase.model_validate(c) for c in json.loads(self.testcases_path.read_text(encoding="utf-8"))]
+
+    # ---------- skrip regresi (langkah test case Pass, diputar ulang tanpa AI) ----------
+    @property
+    def scripts_path(self) -> Path:
+        return self.root / "scripts.json"
+
+    def write_scripts(self, scripts: dict) -> None:
+        self._write_json(self.scripts_path, {k: v.model_dump(mode="json") for k, v in scripts.items()})
+
+    def read_scripts(self) -> dict:
+        from qa_agent.agent.script import TestScript
+
+        if not self.scripts_path.exists():
+            return {}
+        data = json.loads(self.scripts_path.read_text(encoding="utf-8"))
+        return {k: TestScript.model_validate(v) for k, v in data.items()}
 
     def write_app_map(self, app_map: AppMap) -> None:
         self._write_json(self.app_map_path, app_map.model_dump(mode="json"))

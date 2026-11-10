@@ -99,9 +99,9 @@ def test_read_review_roundtrip(tmp_path):
 def test_read_review_rejects_unknown_status(tmp_path):
     store, wb = build(tmp_path)
     ws = wb["Test Cases"]
-    ws.cell(2, col(ws, "Status Final")).value = "Lulus"
+    ws.cell(2, col(ws, "Status Final")).value = "Mungkin"
     wb.save(store.report_xlsx)
-    with pytest.raises(ValueError, match="Baris 2.*Lulus"):
+    with pytest.raises(ValueError, match="Baris 2.*Mungkin"):
         read_review(store.report_xlsx)
 
 
@@ -191,8 +191,8 @@ def test_office_template_controls_test_case_columns(tmp_path):
     write_report_xlsx(store.report_xlsx, store.read_meta(), store.read_testcases(), store.read_steps(),
                       store.read_app_map(), template=template)
     wb = load_workbook(store.report_xlsx)
-    assert "Test Cases" in wb.sheetnames
-    ws = wb["Test Cases"]
+    assert wb.sheetnames[0] == "Daftar Uji"  # nama & posisi sheet kantor dipertahankan
+    ws = wb["Daftar Uji"]
     assert [c.value for c in ws[1]] == ["No. TC", "Skenario Pengujian", "Hasil yang Diharapkan", "Hasil Aktual",
                                         "Status", "Keterangan", "Kolom Kantor Lain"]
     assert ws.cell(1, 1).fill.fgColor.rgb.endswith("00B050")  # gaya header template dipertahankan

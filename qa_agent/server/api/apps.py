@@ -132,14 +132,27 @@ def patch_app(app_id: int, body: AppPatch, request: Request) -> dict:
 
 
 @router.delete("/apps/{app_id}", status_code=204)
-def delete_app(app_id: int, request: Request) -> Response:
-    store = deps.store(request)
+def delete_app(app_id: int, request: Request, with_runs: bool = False) -> Response:
+    """Hapus aplikasi. `with_runs=true` (setelah konfirmasi QA) ikut menghapus semua riwayat run + evidence-nya."""
+    from qa_agent.agent.control import InterventionError
+    from qa_agent.server.testdata import hook_secret_key
+
+    store, manager, secrets = deps.store(request), deps.manager(request), deps.secrets(request)
     if store.get_app(app_id) is None:
         raise deps.not_found("Aplikasi")
-    accounts = store.list_accounts(app_id)
-    store.delete_app(app_id)  # ValueError → 409 bila sudah punya run
+    runs = store.list_runs(app_id=app_id, limit=100_000)
+    if runs and not with_runs:
+        raise ValueError("Aplikasi sudah punya riwayat run. Hapus beserta riwayat run-nya untuk melanjutkan")
+    if any(manager.is_active(r.id) or r.status in ("running", "queued") for r in runs):
+        raise InterventionError("Masih ada run yang berjalan untuk aplikasi ini. Hentikan dulu sebelum menghapus")
+    for r in runs:
+        manager.delete(r.id)
+    accounts, hooks = store.list_accounts(app_id), store.list_hooks(app_id)
+    store.delete_app(app_id)
     for acc in accounts:
-        deps.secrets(request).delete(f"account:{acc.id}")
+        secrets.delete(f"account:{acc.id}")
+    for hook in hooks:
+        secrets.delete(hook_secret_key(hook.id))
     return Response(status_code=204)
 
 

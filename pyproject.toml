@@ -23,10 +23,11 @@ dependencies = [
   "keyring>=25",
   "pypdf>=4.0",
   "cryptography>=42",
+  "httpx>=0.27",
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8.0", "flask>=3.0", "httpx>=0.27"]
+dev = ["pytest>=8.0", "flask>=3.0"]
 
 [project.scripts]
 qa-agent = "qa_agent.cli:app"

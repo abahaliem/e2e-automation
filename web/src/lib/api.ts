@@ -1,11 +1,25 @@
 import type {
   Account,
+  ApiImport,
+  ApiRun,
+  ApiRunBrief,
+  ApiSuite,
+  ApiSuiteInput,
   ApkUpload,
   App,
   AuthStatus,
   AuthUser,
   Flow,
+  Hook,
+  HookInput,
+  PerfRequestCfg,
+  PerfRun,
+  PerfRunBrief,
+  PerfTest,
+  PerfTestInput,
   PlanCase,
+  TestDataSet,
+  TestDataValue,
   PlanResponse,
   Role,
   RunMap,
@@ -111,9 +125,47 @@ export const api = {
   getApp: (id: number) => get<App>(`/api/apps/${id}`),
   createApp: (body: AppInput) => post<App>("/api/apps", body),
   updateApp: (id: number, body: Partial<AppInput>) => patch<App>(`/api/apps/${id}`, body),
-  deleteApp: (id: number) => del(`/api/apps/${id}`),
+  /** withRuns: setelah konfirmasi, riwayat run + evidence aplikasi ikut dihapus */
+  deleteApp: (id: number, withRuns = false) => del(`/api/apps/${id}${withRuns ? "?with_runs=true" : ""}`),
   appModules: (id: number) =>
     get<{ modules: string[]; explored: boolean; flows?: { id: number; name: string }[] }>(`/api/apps/${id}/modules`),
+  // uji beban (performance)
+  listPerfTests: (appId: number) => get<PerfTest[]>(`/api/apps/${appId}/perf-tests`),
+  createPerfTest: (appId: number, body: PerfTestInput) => post<PerfTest>(`/api/apps/${appId}/perf-tests`, body),
+  updatePerfTest: (id: number, body: PerfTestInput) => patch<PerfTest>(`/api/perf-tests/${id}`, body),
+  deletePerfTest: (id: number) => del(`/api/perf-tests/${id}`),
+  importCurl: (text: string) => post<{ request: PerfRequestCfg; secret_headers: string }>("/api/perf-tests/import-curl", { text }),
+  runPerfTest: (id: number, confirmProduction = false) => post<PerfRun>(`/api/perf-tests/${id}/run`, { confirm_production: confirmProduction }),
+  listPerfRuns: (testId: number) => get<PerfRunBrief[]>(`/api/perf-tests/${testId}/runs`),
+  getPerfRun: (id: number) => get<PerfRun>(`/api/perf-runs/${id}`),
+  stopPerfRun: (id: number) => post<{ stopping: boolean }>(`/api/perf-runs/${id}/stop`),
+  deletePerfRun: (id: number) => del(`/api/perf-runs/${id}`),
+  perfXlsxUrl: (id: number) => `/api/perf-runs/${id}/xlsx`,
+  // API testing
+  listApiSuites: (appId: number) => get<ApiSuite[]>(`/api/apps/${appId}/api-suites`),
+  createApiSuite: (appId: number, body: ApiSuiteInput) => post<ApiSuite>(`/api/apps/${appId}/api-suites`, body),
+  updateApiSuite: (id: number, body: ApiSuiteInput) => patch<ApiSuite>(`/api/api-suites/${id}`, body),
+  deleteApiSuite: (id: number) => del(`/api/api-suites/${id}`),
+  importApiCases: (kind: "postman" | "openapi" | "curl", text: string) => post<ApiImport>("/api/api-suites/import", { kind, text }),
+  generateApiCases: (appId: number, specText: string, focus: string) =>
+    post<ApiImport>("/api/api-suites/generate", { app_id: appId, spec_text: specText, focus }),
+  runApiSuite: (id: number, confirmProduction = false) => post<ApiRun>(`/api/api-suites/${id}/run`, { confirm_production: confirmProduction }),
+  listApiRuns: (suiteId: number) => get<ApiRunBrief[]>(`/api/api-suites/${suiteId}/runs`),
+  getApiRun: (id: number) => get<ApiRun>(`/api/api-runs/${id}`),
+  stopApiRun: (id: number) => post<{ stopping: boolean }>(`/api/api-runs/${id}/stop`),
+  deleteApiRun: (id: number) => del(`/api/api-runs/${id}`),
+  apiXlsxUrl: (id: number) => `/api/api-runs/${id}/xlsx`,
+  // data uji & persiapan otomatis
+  listTestData: (appId: number) => get<TestDataSet[]>(`/api/apps/${appId}/test-data`),
+  addTestData: (appId: number, body: { name: string; values: string }) => post<TestDataSet[]>(`/api/apps/${appId}/test-data`, body),
+  resetTestData: (valueId: number) => patch<TestDataValue>(`/api/test-data/${valueId}`, {}),
+  deleteTestData: (valueId: number) => del(`/api/test-data/${valueId}`),
+  deleteTestDataSet: (appId: number, name: string) => del(`/api/apps/${appId}/test-data/${encodeURIComponent(name)}`),
+  listHooks: (appId: number) => get<Hook[]>(`/api/apps/${appId}/hooks`),
+  createHook: (appId: number, body: HookInput) => post<Hook>(`/api/apps/${appId}/hooks`, body),
+  updateHook: (id: number, body: Partial<HookInput> & { active?: boolean }) => patch<Hook>(`/api/hooks/${id}`, body),
+  deleteHook: (id: number) => del(`/api/hooks/${id}`),
+  testHook: (id: number) => post<{ ok: boolean; message: string; captured: Record<string, string> }>(`/api/hooks/${id}/test`),
   listFlows: (appId: number) => get<Flow[]>(`/api/apps/${appId}/flows`),
   createFlow: (appId: number, body: { name: string; steps: string }) => post<Flow>(`/api/apps/${appId}/flows`, body),
   updateFlow: (id: number, body: { name?: string; steps?: string }) => patch<Flow>(`/api/flows/${id}`, body),
@@ -168,7 +220,8 @@ export const api = {
 
   // pengaturan laporan
   reportSettings: () => get<ReportSettings>("/api/settings/report"),
-  patchReportSettings: (body: { company_name: string }) => patch<ReportSettings>("/api/settings/report", body),
+  patchReportSettings: (body: { company_name?: string; template_fields?: Record<string, string>; template_sheet?: string }) =>
+    patch<ReportSettings>("/api/settings/report", body),
   uploadTemplate: (file: File) =>
     request<ReportSettings>(`/api/settings/report/template?filename=${encodeURIComponent(file.name)}`, {
       method: "POST",
@@ -176,6 +229,13 @@ export const api = {
       headers: { "content-type": "application/octet-stream" },
     }),
   deleteTemplate: () => del("/api/settings/report/template"),
+  uploadLogo: (file: File) =>
+    request<ReportSettings>(`/api/settings/report/logo?filename=${encodeURIComponent(file.name)}`, {
+      method: "POST",
+      body: file,
+      headers: { "content-type": "application/octet-stream" },
+    }),
+  deleteLogo: () => del("/api/settings/report/logo"),
 
   // perangkat Android
   listDevices: () => get<{ devices: Device[] }>("/api/devices"),

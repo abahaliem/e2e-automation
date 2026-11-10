@@ -50,8 +50,21 @@ Browser terbuka otomatis di `http://127.0.0.1:8787`. Bila port itu terpakai, por
 
    Semua intervensi tercatat di laporan sebagai langkah manual atau arahan QA. Jeda berlaku juga di antara test case, dan arahan tetap dibaca walau layar awal test case tidak bisa dibuka otomatis (agent mencoba sendiri dari layar saat ini).
 6. **Hasil run:** filter temuan, isi Status Final, Severity, dan Catatan reviewer. Unduh Excel, HTML, atau PDF, atau salin temuan sebagai laporan bug (Jira).
-7. **Regresi:** di halaman Hasil, **Ulang dengan test case sama** menjalankan lagi test case yang persis sama (tanpa AI menyusun ulang), supaya hasil antar run bisa dibandingkan.
-8. **Riwayat run:** run lama bisa dihapus (ikon tempat sampah) beserta screenshot dan dokumennya supaya disk dan database tidak penuh.
+7. **Regresi:** di halaman Hasil, **Ulang dengan test case sama** menjalankan lagi test case yang persis sama (tanpa AI menyusun ulang), supaya hasil antar run bisa dibandingkan. Test case yang **Pass** direkam sebagai skrip dan saat regresi **diputar ulang tanpa AI** (lebih cepat, hemat, konsisten). Bila tombol berubah atau layar akhir berbeda, AI memperbaiki skripnya (self-healing); bisa dimatikan, test case lalu menjadi Perlu Review.
+8. **Riwayat run:** run lama bisa dihapus (ikon tempat sampah) beserta screenshot dan dokumennya supaya disk dan database tidak penuh. Aplikasi juga bisa dihapus beserta seluruh riwayat run-nya (dengan konfirmasi).
+
+**Data uji & persiapan otomatis** (Aplikasi)
+- **Data uji:** kumpulan nilai per aplikasi, mis. `wo_id` berisi nomor work order uji. Tulis `{{data:wo_id}}` di langkah/test data test case atau alur bisnis; tiap test case memakai nilai yang belum terpakai lalu menandainya terpakai (bisa dikembalikan dengan *pakai lagi*). Bila habis, test case Blocked dengan pesan jelas. AI penyusun test case diberi tahu data yang tersedia.
+- **Persiapan otomatis (HTTP):** panggil endpoint internal sekali sebelum run atau sebelum tiap test case (mis. membuat WO uji baru); nilai dari respons JSON bisa langsung disimpan ke Data uji (`wo_id = data.id`). Header berisi token disimpan terenkripsi.
+
+**API Test** (menu API Test)
+- Suite API per aplikasi dengan **Base URL** (`{{base_url}}`). Test case bisa diimpor dari **Postman collection**, **OpenAPI/Swagger** (JSON/YAML), atau **cURL**, atau disusun **AI** (skenario positif, negatif, validasi per endpoint) lalu direview sebelum disimpan.
+- Pengecekan per test case: status HTTP (`200`, `2xx`), isi JSON (`data.status = CLOSED`, ada/tidak ada, tipe), waktu respons, body, header. Nilai respons bisa disimpan ke variabel (`wo_id = data.id`) dan dipakai request berikutnya (`{{wo_id}}`); `{{data:nama}}` dari Data uji juga bisa dipakai.
+- Token/API key di **Header rahasia** (terenkripsi, disamarkan di hasil). Host di luar domain aplikasi butuh konfirmasi; suite Production yang berisi POST/PUT/PATCH/DELETE wajib konfirmasi sebelum dijalankan.
+- Hasil tampil live per test case (nilai aktual vs harapan, respons) dan bisa diunduh sebagai **Excel** dengan format laporan yang sama, termasuk template kantor.
+
+**Performance** (menu Performance)
+- Uji beban HTTP: request berbobot (atau tempel cURL), virtual user (maks 200), durasi (maks 30 menit), ramp-up, jeda antar request, ambang **p95** dan **error rate**. Grafik live, tombol Hentikan, hasil LULUS/TIDAK LULUS per request, unduh Excel. Hanya ke domain aplikasi (host lain wajib konfirmasi); Production wajib konfirmasi risiko.
 
 **Alur bisnis (modul kustom)**
 
@@ -59,7 +72,7 @@ Untuk proses yang melintasi beberapa menu, mis. *buka work order sampai closed*.
 
 **Pengaturan lain**
 - **Skill QA:** standar QA bawaan plus dokumen kantor (md/txt/docx/pdf) yang dipakai AI saat menyusun, menjalankan, dan menilai test case, per aplikasi dan per tahap.
-- **Laporan:** nama perusahaan di PDF dan template Excel kantor (kolom dicocokkan otomatis).
+- **Laporan:** logo dan nama perusahaan di kepala PDF, serta **template Excel kantor dengan tata letak bebas** (mis. form UAT SPN/GEN/P07/F01): judul kolom boleh di baris mana pun, isian kepala dokumen (Project, UAT Date, QA/Tester, Developer, dll.) diisi otomatis/sekali di Pengaturan, status ditulis dengan kosakata template (Passed/Failed/Pending/Blocked atau ✓/!/X), tabel diperpanjang otomatis dengan rekap & rumus ikut bergeser, dan review yang diisi di Excel tetap terbaca kembali. Sheet contoh yang sudah berisi data tidak dipilih otomatis; sheet bisa dipilih sendiri.
 - **Keamanan:** info mode lokal; di mode server untuk kelola pengguna dan ganti password.
 
 **Data & keamanan**

@@ -44,7 +44,7 @@ def test_build_survives_invalid_review_cell(tmp_path):
     store = sample_run(tmp_path / "run")
     xlsx, _ = build_reports(store)
     wb = load_workbook(xlsx)
-    wb["Test Cases"].cell(2, TC_HEADERS.index("Status Final") + 1).value = "Lulus"
+    wb["Test Cases"].cell(2, TC_HEADERS.index("Status Final") + 1).value = "Mungkin"
     wb.save(xlsx)
     build_reports(store)  # tidak boleh crash di akhir run
     assert xlsx.exists()
@@ -108,7 +108,7 @@ def test_template_generic_status_not_counted_as_review(tmp_path):
     review = store.read_review()
     assert not any(v.get("status_final") for v in review.values())  # status = salinan status AI, bukan review
     wb = load_workbook(store.report_xlsx)
-    ws = wb["Test Cases"]
+    ws = wb["Daftar Uji"]
     ws.cell(3, 3).value = "Fail"  # reviewer mengubah TC-PEN-002 (Perlu Review → Fail)
     wb.save(store.report_xlsx)
     build_reports(store, template=template)

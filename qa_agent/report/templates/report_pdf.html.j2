@@ -14,6 +14,9 @@
   .brand .logo { display: flex; align-items: center; gap: 6pt; font-weight: 600; }
   .brand .mark { width: 16pt; height: 16pt; border-radius: 4pt; background: #2560e8; display: grid; place-items: center; }
   .brand .mark span { width: 7pt; height: 7pt; border: 1.6pt solid #fff; border-radius: 2pt; }
+  .brand .logo.company { gap: 10pt; }
+  .brand img.company-logo { display: block; max-height: 30pt; max-width: 70mm; width: auto; height: auto; object-fit: contain; }
+  .brand .company-name { font-size: 11pt; font-weight: 600; color: #15171c; }
   h1 { font-size: 21pt; font-weight: 600; letter-spacing: -0.02em; margin: 0; }
   .subtitle { font-size: 13pt; color: #585d69; margin-top: 2pt; }
   dl.meta { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10pt 22pt; margin: 0; font-size: 9.5pt; }
@@ -51,7 +54,11 @@
 <article>
   <header class="doc">
     <div class="brand">
+      {% if logo %}
+      <div class="logo company"><img class="company-logo" src="{{ logo }}" alt="Logo {{ company or 'perusahaan' }}">{% if company %}<span class="company-name">{{ company }}</span>{% endif %}</div>
+      {% else %}
       <div class="logo"><div class="mark"><span></span></div>QA Agent{% if company %} <span class="dim">·</span> <span class="muted">{{ company }}</span>{% endif %}</div>
+      {% endif %}
       <span class="mono dim">{{ run_code }}</span>
     </div>
     <div>

@@ -91,9 +91,14 @@ describe("Run baru", () => {
     const user = userEvent.setup();
     expect(await screen.findByText(/Memakai test case yang sama dengan run #9/)).toBeInTheDocument();
     await waitFor(() => expect(screen.getByLabelText("Modul")).toHaveValue("Pengguna"));
+    // regresi: skrip rekaman diputar tanpa AI (default), perbaikan AI bisa dimatikan
+    expect(screen.getByRole("switch", { name: /Putar ulang skrip rekaman tanpa AI/ })).toBeChecked();
+    await user.click(screen.getByRole("switch", { name: /Perbaiki dengan AI bila skrip gagal/ }));
     await user.click(screen.getByRole("button", { name: /Mulai run/ }));
     await waitFor(() => expect(mocked.createRun).toHaveBeenCalled());
-    expect(mocked.createRun.mock.calls[0][0]).toMatchObject({ mode: "deep", module: "Pengguna", reuse_cases_from: 9 });
+    expect(mocked.createRun.mock.calls[0][0]).toMatchObject({
+      mode: "deep", module: "Pengguna", reuse_cases_from: 9, replay_scripts: true, heal: false,
+    });
   });
 
   it("URL baru dibuat sebagai aplikasi sebelum run", async () => {

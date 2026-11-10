@@ -309,3 +309,80 @@ def test_valid_login_test_data_replaced_but_negative_kept():
     assert valid_login_test_data("Sign In dengan field kosong", "Username: (kosong), Password: (kosong)", []) \
         == "Username: (kosong), Password: (kosong)"
     assert valid_login_test_data("Tambah pengguna", "Nama: QA-AUTO Budi", []) == "Nama: QA-AUTO Budi"
+
+# ---------------------------------------------------------------- skrip regresi tanpa AI
+from qa_agent.agent.script import TestScript
+
+TRACE = {"steps": [{"action": "click", "element": {"role": "link", "name": "Pengguna", "selector": "link:Pengguna"},
+                    "value": None}],
+         "start_names": ["Beranda"], "end_names": ["Daftar Pengguna"], "end_location": url("home")}
+
+
+def script_for(tc_id, name="Pengguna", expect=("Pengguna",)):
+    return TestScript(tc_id=tc_id, expect_texts=list(expect), steps=[
+        {"action": "click", "element": {"role": "link", "name": name, "selector": f"link:{name}"}}])
+
+
+def test_pass_case_records_script(tmp_path):
+    runner, loop, store, _, _ = make(tmp_path, {"TC-PEN-001": PASS, "TC-PEN-002": LoopOutcome(final="done", status="fail")})
+    loop.last_trace = TRACE
+    runner.execute([tc(1), tc(2)], needs_auth=True)
+    scripts = store.read_scripts()
+    assert list(scripts) == ["TC-PEN-001"]  # hanya test case Pass yang direkam
+    assert scripts["TC-PEN-001"].steps[0].element["name"] == "Pengguna"
+
+
+def test_replay_script_without_ai(tmp_path):
+    runner, loop, store, driver, _ = make(tmp_path, {}, scripts={"TC-PEN-001": script_for("TC-PEN-001")})
+    cases = runner.execute([tc(1)], needs_auth=True)
+    assert loop.calls == []  # AI tidak dipanggil sama sekali
+    assert cases[0].status_ai == "Pass" and "skrip rekaman" in cases[0].ai_note
+    assert driver.executed == [("click", "Pengguna", None)]
+    assert "TC-PEN-001" in store.read_scripts()  # skrip ikut tersimpan di run regresi
+
+
+def test_failed_script_is_healed_by_ai(tmp_path):
+    broken = script_for("TC-PEN-001", name="Kelola Pengguna")
+    runner, loop, store, _, _ = make(tmp_path, {"TC-PEN-001": PASS}, scripts={"TC-PEN-001": broken})
+    goals = []
+    original = loop.run
+    loop.run = lambda tc_id, goal, **kw: (goals.append(goal), original(tc_id, goal, **kw))[1]
+    loop.last_trace = TRACE
+    cases = runner.execute([tc(1)], needs_auth=True)
+    assert cases[0].status_ai == "Pass" and "diperbaiki AI" in cases[0].ai_note
+    assert "Kelola Pengguna" in goals[0]  # AI tahu langkah skrip yang gagal
+    assert store.read_scripts()["TC-PEN-001"].steps[0].element["name"] == "Pengguna"  # skrip baru
+
+
+def test_failed_script_without_heal_needs_review(tmp_path):
+    broken = script_for("TC-PEN-001", name="Kelola Pengguna")
+    runner, loop, _, _, _ = make(tmp_path, {}, scripts={"TC-PEN-001": broken}, heal=False)
+    cases = runner.execute([tc(1)], needs_auth=True)
+    assert loop.calls == [] and cases[0].status_ai == "Perlu Review"
+    assert "Kelola Pengguna" in cases[0].actual
+
+def test_script_not_replayed_for_edited_case(tmp_path):
+    old = script_for("TC-PEN-001")
+    old.title = "Judul lama"
+    runner, loop, _, _, _ = make(tmp_path, {"TC-PEN-001": PASS}, scripts={"TC-PEN-001": old})
+    loop.last_trace = TRACE
+    runner.execute([tc(1)], needs_auth=True)
+    assert [c[0] for c in loop.calls] == ["TC-PEN-001"]  # dijalankan AI, bukan skrip milik test case lain
+
+# ---------------------------------------------------------------- data uji sebelum test case
+def test_prepare_data_fills_placeholders_or_blocks(tmp_path):
+    def prepare(case):
+        if case.id == "TC-PEN-002":
+            return "Data uji 'wo_id' habis. Tambahkan nilai baru di Aplikasi > Data uji, lalu jalankan ulang"
+        case.steps = [s.replace("{{data:wo_id}}", "000090014541") for s in case.steps]
+        return None
+
+    runner, loop, _, _, _ = make(tmp_path, {"TC-PEN-001": PASS}, prepare_data=prepare)
+    goals = []
+    original = loop.run
+    loop.run = lambda tc_id, goal, **kw: (goals.append(goal), original(tc_id, goal, **kw))[1]
+    cases = runner.execute([tc(1, steps=["Buka WO {{data:wo_id}}"]), tc(2, steps=["Buka WO {{data:wo_id}}"])],
+                           needs_auth=True)
+    assert "Buka WO 000090014541" in goals[0] and cases[0].status_ai == "Pass"
+    assert cases[1].status_ai == "Blocked" and "habis" in cases[1].actual
+    assert [c[0] for c in loop.calls] == ["TC-PEN-001"]  # tanpa data, AI tidak dijalankan
