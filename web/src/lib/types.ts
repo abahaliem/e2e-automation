@@ -434,3 +434,53 @@ export type PerfRun = {
   finished_at: string | null;
 };
 export type PerfRunBrief = Omit<PerfRun, "result"> & { summary: PerfSummary | null; passed: boolean | null };
+
+// ---------- API testing ----------
+export type ApiAssertionKind = "status" | "json" | "time" | "body" | "header";
+export type ApiAssertionOp = "eq" | "ne" | "contains" | "exists" | "not_exists" | "lt" | "gt" | "type";
+export type ApiAssertion = { kind: ApiAssertionKind; op: ApiAssertionOp; expected: string; path: string };
+export type ApiMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE" | "HEAD";
+export type ApiCaseCfg = {
+  name: string;
+  method: ApiMethod;
+  url: string;
+  headers: Record<string, string>;
+  body: string;
+  assertions: ApiAssertion[];
+  capture: Record<string, string>;
+};
+export type ApiSuiteConfig = {
+  base_url: string;
+  environment: "dev" | "production";
+  approved_hosts: string[];
+  variables: Record<string, string>;
+  cases: ApiCaseCfg[];
+};
+export type ApiSuite = { id: number; app_id: number; name: string; config: ApiSuiteConfig; has_secret_headers: boolean; updated_at: string };
+export type ApiSuiteInput = ApiSuiteConfig & { name: string; secret_headers?: string };
+export type ApiCheck = { description: string; passed: boolean; actual: string };
+export type ApiCaseResult = {
+  name: string;
+  request: { method: string; url: string; body: string };
+  status?: number;
+  ms?: number;
+  response?: string;
+  assertions: ApiCheck[];
+  error: string;
+  passed: boolean;
+};
+export type ApiSummary = { total: number; passed: number; failed: number; errors: number };
+export type ApiRun = {
+  id: number;
+  suite_id: number;
+  app_id: number;
+  name: string;
+  status: "running" | "completed" | "stopped" | "failed";
+  config: ApiSuiteConfig;
+  result: { cases?: ApiCaseResult[]; summary?: ApiSummary; variables?: Record<string, unknown>; total?: number };
+  note: string;
+  started_at: string;
+  finished_at: string | null;
+};
+export type ApiRunBrief = Omit<ApiRun, "result" | "config"> & { summary: ApiSummary | null };
+export type ApiImport = { cases: ApiCaseCfg[]; base_url: string; secret_headers?: string };

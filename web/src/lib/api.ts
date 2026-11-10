@@ -1,5 +1,10 @@
 import type {
   Account,
+  ApiImport,
+  ApiRun,
+  ApiRunBrief,
+  ApiSuite,
+  ApiSuiteInput,
   ApkUpload,
   App,
   AuthStatus,
@@ -136,6 +141,20 @@ export const api = {
   stopPerfRun: (id: number) => post<{ stopping: boolean }>(`/api/perf-runs/${id}/stop`),
   deletePerfRun: (id: number) => del(`/api/perf-runs/${id}`),
   perfXlsxUrl: (id: number) => `/api/perf-runs/${id}/xlsx`,
+  // API testing
+  listApiSuites: (appId: number) => get<ApiSuite[]>(`/api/apps/${appId}/api-suites`),
+  createApiSuite: (appId: number, body: ApiSuiteInput) => post<ApiSuite>(`/api/apps/${appId}/api-suites`, body),
+  updateApiSuite: (id: number, body: ApiSuiteInput) => patch<ApiSuite>(`/api/api-suites/${id}`, body),
+  deleteApiSuite: (id: number) => del(`/api/api-suites/${id}`),
+  importApiCases: (kind: "postman" | "openapi" | "curl", text: string) => post<ApiImport>("/api/api-suites/import", { kind, text }),
+  generateApiCases: (appId: number, specText: string, focus: string) =>
+    post<ApiImport>("/api/api-suites/generate", { app_id: appId, spec_text: specText, focus }),
+  runApiSuite: (id: number, confirmProduction = false) => post<ApiRun>(`/api/api-suites/${id}/run`, { confirm_production: confirmProduction }),
+  listApiRuns: (suiteId: number) => get<ApiRunBrief[]>(`/api/api-suites/${suiteId}/runs`),
+  getApiRun: (id: number) => get<ApiRun>(`/api/api-runs/${id}`),
+  stopApiRun: (id: number) => post<{ stopping: boolean }>(`/api/api-runs/${id}/stop`),
+  deleteApiRun: (id: number) => del(`/api/api-runs/${id}`),
+  apiXlsxUrl: (id: number) => `/api/api-runs/${id}/xlsx`,
   // data uji & persiapan otomatis
   listTestData: (appId: number) => get<TestDataSet[]>(`/api/apps/${appId}/test-data`),
   addTestData: (appId: number, body: { name: string; values: string }) => post<TestDataSet[]>(`/api/apps/${appId}/test-data`, body),

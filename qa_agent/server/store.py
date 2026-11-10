@@ -69,6 +69,27 @@ CREATE TABLE IF NOT EXISTS skills (
   active INTEGER NOT NULL DEFAULT 1,
   created_at TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS api_suites (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  app_id INTEGER NOT NULL REFERENCES apps(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  config TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS api_runs (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  suite_id INTEGER NOT NULL,
+  app_id INTEGER NOT NULL,
+  name TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'running',
+  config TEXT NOT NULL DEFAULT '{}',
+  result TEXT NOT NULL DEFAULT '{}',
+  note TEXT NOT NULL DEFAULT '',
+  created_by TEXT,
+  started_at TEXT NOT NULL,
+  finished_at TEXT
+);
 CREATE TABLE IF NOT EXISTS perf_tests (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   app_id INTEGER NOT NULL REFERENCES apps(id) ON DELETE CASCADE,
@@ -537,8 +558,53 @@ class Store:
         self._exec("DELETE FROM perf_runs WHERE id=?", (run_id,))
 
     def mark_perf_interrupted(self) -> None:
-        self._exec("UPDATE perf_runs SET status='stopped', note='Server berhenti saat uji berjalan', "
-                   "finished_at=? WHERE status='running'", (now_iso(),))
+        for table in ("perf_runs", "api_runs"):
+            self._exec(f"UPDATE {table} SET status='stopped', note='Server berhenti saat uji berjalan', "
+                       "finished_at=? WHERE status='running'", (now_iso(),))
+
+    # ---------- API testing ----------
+    def create_api_suite(self, *, app_id: int, name: str, config: dict) -> dict:
+        now = now_iso()
+        cur = self._exec("INSERT INTO api_suites (app_id, name, config, created_at, updated_at) VALUES (?,?,?,?,?)",
+                         (app_id, name.strip(), json.dumps(config), now, now))
+        return self.get_api_suite(cur.lastrowid)  # type: ignore[return-value]
+
+    def get_api_suite(self, suite_id: int) -> dict | None:
+        return self._perf(self._one("SELECT * FROM api_suites WHERE id=?", (suite_id,)), "config")
+
+    def list_api_suites(self, app_id: int) -> list[dict]:
+        return [self._perf(r, "config") for r in self._all("SELECT * FROM api_suites WHERE app_id=? ORDER BY id",
+                                                            (app_id,))]  # type: ignore[misc]
+
+    def update_api_suite(self, suite_id: int, *, name: str, config: dict) -> dict:
+        self._exec("UPDATE api_suites SET name=?, config=?, updated_at=? WHERE id=?",
+                   (name.strip(), json.dumps(config), now_iso(), suite_id))
+        return self.get_api_suite(suite_id)  # type: ignore[return-value]
+
+    def delete_api_suite(self, suite_id: int) -> None:
+        with self._lock:
+            self._db.execute("DELETE FROM api_runs WHERE suite_id=?", (suite_id,))
+            self._db.execute("DELETE FROM api_suites WHERE id=?", (suite_id,))
+            self._db.commit()
+
+    def create_api_run(self, *, suite_id: int, app_id: int, name: str, config: dict, created_by: str | None) -> dict:
+        cur = self._exec("INSERT INTO api_runs (suite_id, app_id, name, config, created_by, started_at) VALUES (?,?,?,?,?,?)",
+                         (suite_id, app_id, name, json.dumps(config), created_by, now_iso()))
+        return self.get_api_run(cur.lastrowid)  # type: ignore[return-value]
+
+    def get_api_run(self, run_id: int) -> dict | None:
+        return self._perf(self._one("SELECT * FROM api_runs WHERE id=?", (run_id,)), "config", "result")
+
+    def list_api_runs(self, suite_id: int, limit: int = 100) -> list[dict]:
+        return [self._perf(r, "config", "result") for r in
+                self._all("SELECT * FROM api_runs WHERE suite_id=? ORDER BY id DESC LIMIT ?", (suite_id, limit))]  # type: ignore[misc]
+
+    def finish_api_run(self, run_id: int, *, status: str, result: dict, note: str = "") -> None:
+        self._exec("UPDATE api_runs SET status=?, result=?, note=?, finished_at=? WHERE id=?",
+                   (status, json.dumps(result), note, now_iso(), run_id))
+
+    def delete_api_run(self, run_id: int) -> None:
+        self._exec("DELETE FROM api_runs WHERE id=?", (run_id,))
 
     # ---------- data uji ----------
     def add_test_data(self, app_id: int, set_name: str, values: list[str]) -> int:
@@ -735,7 +801,7 @@ class Store:
         if self._one("SELECT 1 FROM runs WHERE app_id=? LIMIT 1", (app_id,)):
             raise ValueError("Aplikasi sudah punya riwayat run. Hapus beserta riwayat run-nya untuk melanjutkan")
         with self._lock:
-            for table in ("accounts", "flows", "test_data", "hooks", "perf_runs", "perf_tests"):
+            for table in ("accounts", "flows", "test_data", "hooks", "perf_runs", "perf_tests", "api_runs", "api_suites"):
                 self._db.execute(f"DELETE FROM {table} WHERE app_id=?", (app_id,))
             self._db.execute("DELETE FROM apps WHERE id=?", (app_id,))
             self._db.commit()

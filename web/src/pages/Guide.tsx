@@ -163,6 +163,34 @@ export function GuidePage() {
         </>
       ),
     },
+    {
+      title: "Uji API (backend)",
+      optional: "Opsional",
+      link: { to: "/api-test", label: "Buka API Test" },
+      body: (
+        <>
+          Buat <b>Suite API baru</b>, isi <b>Base URL</b>, lalu tambahkan test case dari <b>Postman</b>, <b>OpenAPI / Swagger</b>,
+          <b> cURL</b>, atau klik <b>Susun dengan AI</b> agar AI membuat skenario positif, negatif, dan validasi per endpoint. Tiap
+          test case punya <b>Pengecekan</b> (status HTTP, isi JSON, waktu respons, header) dan bisa <b>menyimpan nilai respons ke
+          variabel</b>, mis. <Code>wo_id = data.id</Code>, untuk dipakai request berikutnya sebagai <Code>{"{{wo_id}}"}</Code>. Token
+          atau API key diisi di <b>Header rahasia</b> (terenkripsi, tidak tampil di hasil). Hasil bisa diunduh sebagai <b>Excel</b>
+          dengan format laporan yang sama, termasuk template kantor.
+        </>
+      ),
+    },
+    {
+      title: "Uji beban (Performance)",
+      optional: "Opsional",
+      link: { to: "/performance", label: "Buka Performance" },
+      body: (
+        <>
+          Buat <b>Uji beban baru</b>, tambahkan request (atau tempel cURL dari DevTools), atur jumlah <b>virtual user</b>, durasi,
+          dan ramp-up, lalu tentukan ambang <b>p95</b> dan <b>error rate</b>. Grafik berjalan live; hasil <b>LULUS / TIDAK LULUS</b>
+          beserta angka per request bisa diunduh sebagai Excel. Uji hanya ke domain aplikasi sendiri; untuk Production wajib
+          konfirmasi dan sebaiknya di luar jam sibuk.
+        </>
+      ),
+    },
   ];
   const loading = profiles.isLoading || apps.isLoading || runs.isLoading;
   const next = loading ? -1 : steps.findIndex((s) => s.done === false);
