@@ -25,7 +25,7 @@ Aksi yang tersedia:
 
 Aturan:
 1. Pakai hanya nomor elemen dari daftar elemen layar saat ini.
-2. Untuk kredensial tulis persis {{username}} dan {{password}}; sistem yang akan mengisinya.
+2. Untuk kredensial akun test yang BENAR tulis persis {{username}} dan {{password}}; sistem yang akan mengisinya. {{password}} selalu password yang benar. Untuk skenario negatif (password salah, username tidak terdaftar, kredensial tidak valid) ketik nilai salah secara literal, mis. "Salah#12345" atau "tidakterdaftar_qa", JANGAN pakai {{password}}/{{username}} untuk nilai yang seharusnya salah. Untuk field kosong, jangan isi field itu.
 3. Data baru yang kamu buat (nama, judul, dll.) diawali "<<data_prefix>>" kecuali test data menentukan lain.
 4. risk "high" jika aksi menyimpan/mengubah/menghapus/mengirim data atau transaksi; "medium" jika membuka form/dialog yang bisa mengarah ke perubahan; "low" untuk navigasi dan membaca.
 5. Nyatakan done segera setelah hasil bisa diverifikasi dari layar. Bandingkan dengan expected result secara jujur: fail jika berbeda.
@@ -53,20 +53,34 @@ Aturan:
 4. Data baru diawali "<<data_prefix>>".
 5. start_url diambil dari peta layar.
 6. Jangan membuat test case login/logout kecuali modulnya memang autentikasi.
+7. Jangan mengarang akun. Kredensial akun test yang valid ditulis persis {{username}} dan {{password}} (sistem mengisinya dari akun test yang tersimpan). Nilai yang sengaja salah ditulis literal dan jelas salah, mis. Salah#12345 atau tidakterdaftar_qa.
 """
 
 
-def execute_system(platform: str, data_prefix: str) -> str:
-    return EXECUTE_SYSTEM.replace("<<platform>>", platform).replace("<<data_prefix>>", data_prefix)
+ANDROID_NOTE = """
+Catatan aplikasi Android:
+- back = menekan tombol Kembali di HP (juga untuk menutup keyboard layar atau dialog).
+- navigate tidak tersedia; berpindah layar dengan click, back, atau scroll.
+- Daftar panjang: scroll "down" untuk melihat elemen di bawahnya.
+- Dialog "tidak merespons" / "telah berhenti" dari Android adalah bukti bug (crash/ANR); sebutkan di actual.
+"""
+
+
+def execute_system(platform: str, data_prefix: str, skills: str = "") -> str:
+    text = EXECUTE_SYSTEM.replace("<<platform>>", platform).replace("<<data_prefix>>", data_prefix)
+    if platform == "android":
+        text += ANDROID_NOTE
+    return text + ("\n" + skills if skills else "")
 
 
 def explore_system(known_modules: list[str]) -> str:
     return EXPLORE_SYSTEM.replace("<<modules>>", ", ".join(known_modules) or "(belum ada)")
 
 
-def plan_system(module: str, max_tcs: int, data_prefix: str, has_prd: bool) -> str:
-    return (PLAN_SYSTEM.replace("<<module>>", module).replace("<<max>>", str(max_tcs))
+def plan_system(module: str, max_tcs: int, data_prefix: str, has_prd: bool, skills: str = "") -> str:
+    text = (PLAN_SYSTEM.replace("<<module>>", module).replace("<<max>>", str(max_tcs))
             .replace("<<data_prefix>>", data_prefix).replace("<<prd_hint>>", " dan PRD" if has_prd else ""))
+    return text + ("\n" + skills if skills else "")
 
 
 def format_element(e: Element) -> str:
@@ -94,8 +108,12 @@ def _images(obs: Observation, vision: bool) -> list[bytes]:
     return [obs.screenshot_annotated] if vision and obs.screenshot_annotated else []
 
 
-def step_message(goal: str, obs: Observation, history: list[str], notes: list[str], vision: bool) -> Message:
+def step_message(goal: str, obs: Observation, history: list[str], notes: list[str], vision: bool,
+                 hints: list[str] | None = None) -> Message:
     text = f"## Tujuan\n{goal}\n\n## Riwayat langkah terakhir\n" + ("\n".join(history) or "(belum ada)")
+    if hints:
+        text += ("\n\n## Arahan QA\n" + "\n".join(f"- {h}" for h in hints)
+                 + "\n(Arahan dari QA manusia yang memantau. Ikuti selama tidak melanggar aturan keamanan.)")
     if notes:
         text += "\n\n## Catatan sistem\n" + "\n".join(f"- {n}" for n in notes)
     text += "\n\n## Layar saat ini\n" + observation_text(obs)

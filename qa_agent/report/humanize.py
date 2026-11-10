@@ -33,6 +33,10 @@ def humanize(action: str, element: dict | None, value: str | None) -> str:
         return f"Tidak bisa dilanjutkan: {value}" if value else "Tidak bisa dilanjutkan"
     if action == "invalid":
         return "Jawaban AI tidak valid"
+    if action == "hint":
+        return f"Arahan QA: {value}"
+    if action == "manual":
+        return f"Langkah manual oleh QA: {value}"
     return action
 
 

@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<title>Run baru (Web) - QA Agent</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/@phosphor-icons/web@2.1.1"></script>
+<script src="assets/theme.js"></script>
+<style>body{font-family:Geist,system-ui,sans-serif;-webkit-font-smoothing:antialiased}</style>
+</head>
+<body class="bg-ink-950 text-fg min-h-[100dvh]">
+<div class="grid grid-cols-[232px_1fr] min-h-[100dvh]">
+
+  <!-- Sidebar -->
+  <aside class="border-r border-ink-700 bg-ink-900 flex flex-col">
+    <div class="h-16 px-5 flex items-center gap-2.5 border-b border-ink-700">
+      <div class="w-8 h-8 rounded-lg bg-accent grid place-items-center"><i class="ph-bold ph-scan text-white text-lg"></i></div>
+      <span class="font-semibold tracking-tight">QA Agent</span>
+    </div>
+    <nav class="p-3 flex flex-col gap-1 text-sm">
+      <a class="flex items-center gap-3 px-3 py-2 rounded-lg text-fg-muted"><i class="ph ph-gauge text-lg"></i>Dashboard</a>
+      <a class="flex items-center gap-3 px-3 py-2 rounded-lg bg-ink-800 text-fg"><i class="ph ph-play-circle text-lg text-accent"></i>Run baru</a>
+      <a class="flex items-center gap-3 px-3 py-2 rounded-lg text-fg-muted hover:bg-ink-850"><i class="ph ph-clock-counter-clockwise text-lg"></i>Riwayat run</a>
+      <a class="flex items-center gap-3 px-3 py-2 rounded-lg text-fg-muted"><i class="ph ph-squares-four text-lg"></i>Aplikasi</a>
+      <a class="flex items-center gap-3 px-3 py-2 rounded-lg text-fg-muted"><i class="ph ph-device-mobile text-lg"></i>Perangkat</a>
+      <a class="flex items-center gap-3 px-3 py-2 rounded-lg text-fg-muted"><i class="ph ph-gear-six text-lg"></i>Pengaturan</a>
+    </nav>
+    <div class="mt-auto m-3 p-3 rounded-lg border border-ink-700 text-xs">
+      <div class="flex items-center gap-2 text-fg"><span class="w-2 h-2 rounded-full bg-pass"></span>AI kantor terhubung</div>
+      <div class="mt-1 font-mono text-fg-dim">z-ai/glm-5.3-flash</div>
+    </div>
+  </aside>
+
+  <!-- Main -->
+  <main class="px-10 py-8">
+    <header class="flex items-end justify-between">
+      <div>
+        <h1 class="text-2xl font-semibold tracking-tight">Run baru</h1>
+        <p class="mt-1 text-fg-muted text-sm">Pilih target, lalu agent menguji dan menyusun test case beserta evidence.</p>
+      </div>
+      <div class="inline-flex p-1 rounded-lg bg-ink-900 border border-ink-700 text-sm">
+        <button class="px-4 py-1.5 rounded-md bg-ink-700 text-fg flex items-center gap-2"><i class="ph ph-globe"></i>Web</button>
+        <button class="px-4 py-1.5 rounded-md text-fg-muted flex items-center gap-2"><i class="ph ph-android-logo"></i>Android</button>
+      </div>
+    </header>
+
+    <div class="mt-8 grid grid-cols-[minmax(0,1fr)_340px] gap-10">
+      <!-- Form -->
+      <section class="flex flex-col gap-7">
+        <div class="flex flex-col gap-2">
+          <label class="text-sm font-medium">URL aplikasi</label>
+          <div class="flex items-center gap-3 h-12 px-4 rounded-lg bg-ink-900 border border-accent-line ring-4 ring-accent-soft">
+            <i class="ph ph-globe-simple text-fg-muted text-lg"></i>
+            <span class="font-mono text-[15px]">https://hr-dev.kantor.local</span>
+          </div>
+          <p class="text-xs text-fg-muted">Agent hanya menjelajah domain ini. Link ke domain lain tidak akan diklik.</p>
+        </div>
+
+        <div class="grid grid-cols-3 gap-5">
+          <div class="flex flex-col gap-2">
+            <label class="text-sm font-medium">Profil AI</label>
+            <div class="h-11 px-4 rounded-lg bg-ink-900 border border-ink-700 flex items-center justify-between text-sm">
+              <span>AI kantor (GLM)</span><i class="ph ph-caret-down text-fg-muted"></i>
+            </div>
+          </div>          <div class="flex flex-col gap-2">
+            <label class="text-sm font-medium">Akun test</label>
+            <div class="h-11 px-4 rounded-lg bg-ink-900 border border-ink-700 flex items-center justify-between text-sm">
+              <span class="truncate">admin <span class="text-fg-dim">qa.admin</span></span><i class="ph ph-caret-down text-fg-muted shrink-0"></i>
+            </div>
+          </div>
+          <div class="flex flex-col gap-2">
+            <label class="text-sm font-medium">Environment</label>
+            <div class="inline-flex p-1 rounded-lg bg-ink-900 border border-ink-700 text-sm h-11">
+              <button class="flex-1 rounded-md bg-ink-700">Dev / UAT</button>
+              <button class="flex-1 rounded-md text-fg-muted flex items-center justify-center gap-1.5"><i class="ph ph-shield-warning"></i>Production</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="flex flex-col gap-2">
+          <label class="text-sm font-medium">Yang diuji</label>
+          <div class="grid grid-cols-2 gap-4">
+            <button class="text-left p-4 rounded-xl border border-accent-line bg-accent-soft flex flex-col justify-start">
+              <div class="flex items-center gap-2 font-medium"><i class="ph ph-map-trifold text-accent text-lg"></i>Seluruh aplikasi</div>
+              <p class="mt-1.5 text-sm text-fg-muted">Petakan semua menu dan halaman. Tidak mengisi atau mengirim form.</p>
+            </button>
+            <button class="text-left p-4 rounded-xl border border-ink-700 bg-ink-900 flex flex-col justify-start">
+              <div class="flex items-center gap-2 font-medium"><i class="ph ph-target text-fg-muted text-lg"></i>Satu modul</div>
+              <p class="mt-1.5 text-sm text-fg-muted">Uji mendalam: positif, negatif, validasi, batas input.</p>
+            </button>
+          </div>
+        </div>
+
+        <div class="flex flex-col gap-2">
+          <label class="text-sm font-medium">PRD <span class="text-fg-dim font-normal">(opsional)</span></label>
+          <div class="h-20 rounded-xl border border-dashed border-ink-600 grid place-items-center text-sm text-fg-muted">
+            <div class="flex items-center gap-2"><i class="ph ph-file-arrow-up text-lg"></i>Tarik file .md atau .txt ke sini</div>
+          </div>
+        </div>
+
+        <div class="flex items-center gap-3 pt-2">
+          <button class="h-11 px-6 rounded-lg bg-accent text-white font-semibold flex items-center gap-2 active:scale-[0.98]"><i class="ph-fill ph-play"></i>Mulai run</button>
+          <button class="h-11 px-5 rounded-lg border border-ink-600 text-fg flex items-center gap-2"><i class="ph ph-bookmark-simple"></i>Simpan aplikasi</button>
+        </div>
+      </section>
+
+      <!-- Saved apps -->
+      <aside class="flex flex-col gap-3">
+        <h2 class="text-sm font-medium text-fg-muted">Aplikasi tersimpan</h2>
+        <div class="rounded-xl border border-ink-700 bg-ink-900 divide-y divide-ink-700">
+          <div class="p-4">
+            <div class="flex items-center justify-between"><span class="font-medium">Web HR</span><span class="text-xs text-fg-dim">2 jam lalu</span></div>
+            <div class="font-mono text-xs text-fg-dim mt-0.5">hr-dev.kantor.local</div>
+            <div class="mt-3 flex gap-3 text-xs"><span class="text-pass">12 Pass</span><span class="text-fail">2 Fail</span><span class="text-review">3 Review</span></div>
+          </div>
+          <div class="p-4">
+            <div class="flex items-center justify-between"><span class="font-medium">Portal Vendor</span><span class="text-xs text-fg-dim">kemarin</span></div>
+            <div class="font-mono text-xs text-fg-dim mt-0.5">vendor-uat.kantor.local</div>
+            <div class="mt-3 flex gap-3 text-xs"><span class="text-pass">27 Pass</span><span class="text-review">1 Review</span></div>
+          </div>
+          <div class="p-4">
+            <div class="flex items-center justify-between"><span class="font-medium">Absensi Web</span><span class="text-xs text-fg-dim">3 hari lalu</span></div>
+            <div class="font-mono text-xs text-fg-dim mt-0.5">absen-dev.kantor.local</div>
+            <div class="mt-3 flex gap-3 text-xs"><span class="text-fg-muted">Explore saja, 18 layar</span></div>
+          </div>
+        </div>
+      </aside>
+    </div>
+  </main>
+</div>
+</body>
+</html>

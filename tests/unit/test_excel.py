@@ -27,8 +27,15 @@ def col(ws, header):
 def test_sheets_and_headers(tmp_path):
     _, wb = build(tmp_path)
     assert wb.sheetnames == ["Ringkasan", "Test Cases", "Temuan", "Inventaris Fitur"]
-    assert [c.value for c in wb["Test Cases"][1]] == TC_HEADERS
-    assert wb["Test Cases"].freeze_panes == "A2"
+    # mockup 09: 12 kolom, header biru aksen dengan teks putih tebal
+    assert TC_HEADERS == ["TC ID", "Modul", "Skenario", "Tipe", "Prioritas", "Langkah", "Expected Result",
+                          "Actual Result", "Status AI", "Status Final", "Catatan Reviewer", "Evidence"]
+    ws = wb["Test Cases"]
+    assert [c.value for c in ws[1]] == TC_HEADERS
+    assert ws.freeze_panes == "A2"
+    assert ws.cell(1, 1).fill.fgColor.rgb.endswith("2560E8")
+    assert ws.cell(1, 1).font.bold and ws.cell(1, 1).font.color.rgb.endswith("FFFFFF")
+    assert ws.cell(2, col(ws, "Tipe")).value == "Positif"
 
 
 def test_test_case_rows_status_colors_and_links(tmp_path):
@@ -41,7 +48,7 @@ def test_test_case_rows_status_colors_and_links(tmp_path):
     assert ws.cell(4, col(ws, "Status AI")).fill.fgColor.rgb.endswith("FFC7CE")
     evidence = ws.cell(2, col(ws, "Evidence"))
     assert evidence.hyperlink.target == "screenshots/TC-PEN-001_step-03.png"
-    assert ws.cell(2, col(ws, "Laporan HTML")).hyperlink.target == "report.html#TC-PEN-001"
+
     assert any("Pass,Fail,Perlu Review,Blocked,Skipped" in (dv.formula1 or "") for dv in ws.data_validations.dataValidation)
 
 
@@ -146,3 +153,66 @@ def test_locked_workbook_raises_friendly_error(tmp_path, monkeypatch):
     monkeypatch.setattr(Workbook, "save", locked)
     with pytest.raises(ReportLockedError, match="Tutup"):
         write_report_xlsx(store.report_xlsx, store.read_meta(), store.read_testcases(), store.read_steps(), None)
+
+
+def test_precondition_and_test_data_kept_in_steps_cell(tmp_path):
+    from qa_agent.models import QaTestCase
+
+    store = sample_run(tmp_path / "run")
+    cases = store.read_testcases()
+    cases[0] = cases[0].model_copy(update={"precondition": "Login sebagai admin", "test_data": "Nama: QA-AUTO Valid"})
+    write_report_xlsx(store.report_xlsx, store.read_meta(), cases, store.read_steps(), store.read_app_map())
+    ws = load_workbook(store.report_xlsx)["Test Cases"]
+    text = ws.cell(2, col(ws, "Langkah")).value
+    assert text.startswith("Pre-condition: Login sebagai admin\n1. Buka form")
+    assert text.endswith("Test data: Nama: QA-AUTO Valid")
+
+
+def office_template(path, headers, sheet="Daftar Uji"):
+    from openpyxl.styles import Font, PatternFill
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = sheet
+    ws.append(headers)
+    for cell in ws[1]:
+        cell.fill = PatternFill("solid", fgColor="00B050")
+        cell.font = Font(bold=True, name="Arial")
+    ws.column_dimensions["B"].width = 55
+    wb.save(path)
+    return path
+
+
+def test_office_template_controls_test_case_columns(tmp_path):
+    template = office_template(tmp_path / "template.xlsx",
+                               ["No. TC", "Skenario Pengujian", "Hasil yang Diharapkan", "Hasil Aktual", "Status",
+                                "Keterangan", "Kolom Kantor Lain"])
+    store = sample_run(tmp_path / "run")
+    write_report_xlsx(store.report_xlsx, store.read_meta(), store.read_testcases(), store.read_steps(),
+                      store.read_app_map(), template=template)
+    wb = load_workbook(store.report_xlsx)
+    assert "Test Cases" in wb.sheetnames
+    ws = wb["Test Cases"]
+    assert [c.value for c in ws[1]] == ["No. TC", "Skenario Pengujian", "Hasil yang Diharapkan", "Hasil Aktual",
+                                        "Status", "Keterangan", "Kolom Kantor Lain"]
+    assert ws.cell(1, 1).fill.fgColor.rgb.endswith("00B050")  # gaya header template dipertahankan
+    assert ws.column_dimensions["B"].width == 55
+    assert ws.cell(2, 1).value == "TC-PEN-001" and ws.cell(2, 2).value == "Tambah pengguna valid"
+    assert ws.cell(4, 4).value == "Server error 500" and ws.cell(4, 5).value == "Fail"
+    assert ws.cell(2, 7).value is None
+    # review dari Excel versi template tetap terbaca
+    ws.cell(3, 5).value = "Fail"
+    ws.cell(3, 6).value = "Dinaikkan"
+    wb.save(store.report_xlsx)
+    review = read_review(store.report_xlsx)
+    assert review["TC-PEN-002"] == {"status_final": "Fail", "reviewer_note": "Dinaikkan"}
+
+
+def test_header_aliases():
+    from qa_agent.report.excel import canonical_header
+
+    assert canonical_header("No. TC") == "TC ID"
+    assert canonical_header("  ID Test Case ") == "TC ID"
+    assert canonical_header("Expected") == "Expected Result"
+    assert canonical_header("Status Akhir") == "Status Final"
+    assert canonical_header("Kolom aneh") is None

@@ -20,6 +20,8 @@ def _normalize_path(path: str) -> str:
 def normalize_location(location: str) -> str:
     """URL → host + path dengan segmen ID diganti ':id'. Selain URL dikembalikan apa adanya."""
     parts = urlsplit(location)
+    if parts.scheme == "android":
+        return location  # kunci layar di fragment adalah identitas layar (aplikasi satu-activity)
     if not parts.scheme or not parts.netloc:
         return location
     out = f"{parts.netloc.lower()}{_normalize_path(parts.path)}"

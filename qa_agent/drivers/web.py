@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import base64
+import time
 from pathlib import Path
 from typing import Any, Callable
 from urllib.parse import urljoin, urlsplit
@@ -9,7 +11,7 @@ from playwright.sync_api import TimeoutError as PlaywrightTimeout
 from playwright.sync_api import sync_playwright
 
 from qa_agent import imaging
-from qa_agent.drivers.base import DriverCrashed
+from qa_agent.drivers.base import DriverCrashed, missing_credential
 from qa_agent.drivers.web_dom import EXTRACT_JS, UI_ERROR_JS, to_element
 from qa_agent.models import Action, ActionResult, Element, Observation, Signal
 from qa_agent.orchestrator.fingerprint import fingerprint
@@ -17,6 +19,9 @@ from qa_agent.orchestrator.fingerprint import fingerprint
 TRACKED_RESOURCES = {"document", "xhr", "fetch"}
 BENIGN_JS_ERRORS = ("ResizeObserver loop",)
 _FATAL_MARKERS = ("has been closed", "Target closed", "Browser closed")
+SCREENCAST_FPS = 6
+SCREENCAST_MAX_WIDTH = 1280
+SCREENCAST_QUALITY = 60
 
 
 def _first_line(e: Exception) -> str:
@@ -75,6 +80,11 @@ class WebDriver:
         self._frames: list[Any] = []
         self._signals: list[Signal] = []
         self._credentials: dict[str, str] = {}
+        # layar live (CDP screencast)
+        self._frame_sink: Callable[[bytes, dict], None] | None = None
+        self._streaming = False
+        self._cdp: Any = None
+        self._last_frame_at = 0.0
 
     # ---------- siklus hidup ----------
     def start(self) -> None:
@@ -82,6 +92,7 @@ class WebDriver:
         self._browser = self._pw.chromium.launch(headless=self.headless)
 
     def stop(self) -> None:
+        self._cdp = None
         for closable in (self._context, self._browser):
             if closable is not None:
                 try:
@@ -96,6 +107,7 @@ class WebDriver:
         if self._browser is None:
             raise DriverCrashed("Browser belum dijalankan (panggil start())")
         if self._context is not None:
+            self._cdp = None
             try:
                 self._context.close()
             except PlaywrightError:
@@ -117,6 +129,74 @@ class WebDriver:
         self._page = page
         self._signals = []
         self._frames = []
+        if self._streaming and self._frame_sink is not None:
+            self._start_screencast()
+
+    # ---------- layar live ----------
+    def set_frame_sink(self, sink: Callable[[bytes, dict], None] | None) -> None:
+        self._frame_sink = sink
+        if sink is None:
+            self._stop_screencast()
+        elif self._streaming:
+            self._start_screencast()
+
+    def set_streaming(self, enabled: bool) -> None:
+        self._streaming = enabled
+        if enabled and self._frame_sink is not None:
+            self._start_screencast()
+        else:
+            self._stop_screencast()
+
+    def pump(self, ms: int = 50) -> None:
+        """Beri kesempatan Playwright memproses event (frame live) saat worker sedang menunggu."""
+        if self._page is None:
+            return
+        try:
+            self._page.wait_for_timeout(ms)
+        except PlaywrightError:
+            pass
+
+    def _start_screencast(self) -> None:
+        if self._page is None or self._cdp is not None:
+            return
+        try:
+            cdp = self._context.new_cdp_session(self._page)
+            cdp.on("Page.screencastFrame", lambda params: self._on_frame(cdp, params))
+            cdp.send("Page.startScreencast", {"format": "jpeg", "quality": SCREENCAST_QUALITY,
+                                              "maxWidth": SCREENCAST_MAX_WIDTH, "maxHeight": SCREENCAST_MAX_WIDTH,
+                                              "everyNthFrame": 1})
+            self._cdp = cdp
+        except PlaywrightError:
+            self._cdp = None
+
+    def _stop_screencast(self) -> None:
+        cdp, self._cdp = self._cdp, None
+        if cdp is None:
+            return
+        try:
+            cdp.send("Page.stopScreencast")
+            cdp.detach()
+        except PlaywrightError:
+            pass
+
+    def _on_frame(self, cdp: Any, params: dict) -> None:
+        try:
+            cdp.send("Page.screencastFrameAck", {"sessionId": params["sessionId"]})
+        except PlaywrightError:
+            return
+        if cdp is not self._cdp or self._frame_sink is None:
+            return
+        now = time.monotonic()
+        if now - self._last_frame_at < 1.0 / SCREENCAST_FPS:
+            return  # batasi ~6 fps
+        self._last_frame_at = now
+        meta = params.get("metadata") or {}
+        width, height = self.viewport
+        info = {"width": int(meta.get("deviceWidth") or width), "height": int(meta.get("deviceHeight") or height)}
+        try:
+            self._frame_sink(base64.b64decode(params["data"]), info)
+        except Exception:
+            pass  # penonton bermasalah tidak boleh menghentikan run
 
     def save_auth_state(self, path: Path) -> None:
         path = Path(path)
@@ -273,6 +353,44 @@ class WebDriver:
         except PlaywrightError:
             locator.select_option(value=value)
 
+    def viewport_size(self) -> dict:
+        width, height = self.viewport
+        return {"width": width, "height": height}
+
+    def manual_input(self, event: dict) -> ActionResult:
+        """Input manual QA dari layar live. Koordinat ternormalisasi 0..1 dikali ukuran viewport.
+
+        Tidak lewat Guard kata kunci; filter jaringan production (context.route) tetap aktif.
+        """
+        kind = event.get("kind")
+        try:
+            if kind == "click":
+                width, height = self.viewport
+                x = min(max(float(event["x"]), 0.0), 1.0) * width
+                y = min(max(float(event["y"]), 0.0), 1.0) * height
+                self.page.mouse.click(x, y)
+            elif kind == "type":
+                self.page.keyboard.type(str(event.get("text", "")))
+            elif kind == "key":
+                self.page.keyboard.press(str(event["key"]))
+            elif kind == "scroll":
+                self.page.mouse.wheel(0, int(event.get("dy", 0)))
+            else:
+                return ActionResult(ok=False, error=f"Jenis input manual tidak dikenal: {kind}")
+            if kind in ("click", "key"):
+                # Klik mouse mentah kembali sebelum navigasi/submit dimulai; beri waktu request berangkat.
+                self.page.wait_for_timeout(300)
+            self._settle()
+            return ActionResult(ok=True)
+        except (KeyError, TypeError, ValueError) as e:
+            return ActionResult(ok=False, error=f"Input manual tidak valid: {e}")
+        except PlaywrightTimeout as e:
+            return ActionResult(ok=False, error=f"Timeout: {_first_line(e)}")
+        except PlaywrightError as e:
+            return ActionResult(ok=False, error=_first_line(e), fatal=_is_fatal(e))
+        except DriverCrashed as e:
+            return ActionResult(ok=False, error=str(e), fatal=True)
+
     def execute(self, action: Action, element: Element | None) -> ActionResult:
         kind = action.action
         if kind in ("click", "type", "select"):
@@ -284,6 +402,9 @@ class WebDriver:
             if kind == "click":
                 self._locator(element).click()
             elif kind == "type":
+                missing = missing_credential(action.value, self._credentials)
+                if missing:
+                    return ActionResult(ok=False, error=missing)
                 self._locator(element).fill(self._resolve(action.value, allow_password=element.input_type == "password"))
             elif kind == "select":
                 self._select(self._locator(element), action.value or "")

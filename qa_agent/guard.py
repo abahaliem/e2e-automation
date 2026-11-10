@@ -49,6 +49,8 @@ class Guard:
             return True
         if not parts.scheme and not parts.netloc:
             return True  # URL relatif
+        if parts.scheme == "android":
+            return parts.netloc.lower() in self.allowed_domains  # layar di dalam paket aplikasi yang dites
         if parts.scheme not in ("http", "https"):
             return False
         host = (parts.hostname or "").lower()
@@ -85,7 +87,12 @@ class Guard:
             if not allow_logout and self._is_logout(element):
                 return _blocked("Aksi logout diblok (test case ini bukan tentang logout)", "medium")
 
-        keyword = self.keyword_risk(element) if kind in ("click", "select") and not login else "low"
+        if login:
+            # Alur login sengaja diizinkan, juga di production: label risiko dari AI (mis. "SIGN IN" dianggap
+            # berisiko) tidak boleh memblok login. Perlindungan tetap ada: link luar domain & logout diblok di atas,
+            # dan filter jaringan production hanya membuka endpoint login.
+            return GuardDecision(allowed=True, risk="low")
+        keyword = self.keyword_risk(element) if kind in ("click", "select") else "low"
         risk: Risk = max(keyword, action.risk, key=_RISK_ORDER.__getitem__)
 
         if explore:

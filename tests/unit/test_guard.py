@@ -108,3 +108,20 @@ def test_custom_login_endpoints_match_by_path_prefix():
     assert g.should_block_request("POST", "https://app.test/login", login_active=True)
     h = Guard("production", ["app.test"], login_endpoints=["/login"])
     assert h.should_block_request("POST", "https://app.test/login-history/delete", login_active=True)
+
+
+def test_production_login_flow_ignores_ai_risk_label():
+    # Bug nyata (CMC Biznet): AI menandai klik "SIGN IN" dan isi password berisiko tinggi; di mode production
+    # alur login harus tetap jalan (filter jaringan tetap hanya membuka endpoint login).
+    assert PROD.check(click(risk="high"), el("SIGN IN"), login=True).allowed
+    typing = Action(action="type", element=1, value="{{password}}", risk="high")
+    assert PROD.check(typing, el("Password", role="input"), login=True).allowed
+
+
+def test_production_login_flow_still_blocks_logout_and_foreign_links():
+    assert not PROD.check(click(), el("Logout"), login=True).allowed
+    assert not PROD.check(click(), el("Masuk", role="link", href="https://evil.test/login"), login=True).allowed
+
+
+def test_production_outside_login_still_respects_ai_risk():
+    assert not PROD.check(click(risk="high"), el("SIGN IN")).allowed

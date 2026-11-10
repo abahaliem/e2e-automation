@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<title>Laporan Hasil Pengujian - {{ subtitle }}</title>
+<style>
+  @page { size: A4; margin: 16mm 14mm 18mm 14mm; }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: "Geist", "Segoe UI", "Helvetica Neue", Arial, sans-serif; color: #15171c; font-size: 10.5pt; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .mono { font-family: "Geist Mono", Consolas, "Courier New", monospace; }
+  .muted { color: #585d69; } .dim { color: #858a96; }
+  header.doc { border-bottom: 2px solid #15171c; padding-bottom: 18pt; display: flex; flex-direction: column; gap: 14pt; }
+  .brand { display: flex; justify-content: space-between; align-items: center; font-size: 9.5pt; }
+  .brand .logo { display: flex; align-items: center; gap: 6pt; font-weight: 600; }
+  .brand .mark { width: 16pt; height: 16pt; border-radius: 4pt; background: #2560e8; display: grid; place-items: center; }
+  .brand .mark span { width: 7pt; height: 7pt; border: 1.6pt solid #fff; border-radius: 2pt; }
+  h1 { font-size: 21pt; font-weight: 600; letter-spacing: -0.02em; margin: 0; }
+  .subtitle { font-size: 13pt; color: #585d69; margin-top: 2pt; }
+  dl.meta { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10pt 22pt; margin: 0; font-size: 9.5pt; }
+  dl.meta dt { color: #858a96; } dl.meta dd { margin: 2pt 0 0; }
+  section { margin-top: 22pt; }
+  h2 { font-size: 13pt; font-weight: 600; margin: 0 0 10pt; }
+  .boxes { display: grid; grid-template-columns: repeat(5, 1fr); border: 1px solid #e1e4ea; border-radius: 6pt; text-align: center; }
+  .boxes div { padding: 10pt 0; border-left: 1px solid #e1e4ea; } .boxes div:first-child { border-left: 0; }
+  .boxes b { display: block; font-size: 17pt; font-weight: 600; } .boxes span { font-size: 8.5pt; color: #585d69; }
+  .pass { color: #1b8f5b; } .fail { color: #cf3b36; } .review { color: #a8760f; } .blocked { color: #585d69; }
+  p.summary { color: #585d69; line-height: 1.55; max-width: 165mm; margin: 10pt 0 0; }
+  .finding { border: 1px solid #e1e4ea; border-radius: 6pt; overflow: hidden; margin-bottom: 12pt; break-inside: avoid; }
+  .finding .head { background: #f7f8fa; border-bottom: 1px solid #e1e4ea; padding: 8pt 12pt; display: flex; justify-content: space-between; align-items: center; gap: 10pt; }
+  .finding .head .title { font-weight: 600; }
+  .badge { font-size: 8.5pt; font-weight: 500; padding: 2pt 6pt; border-radius: 3pt; white-space: nowrap; }
+  .badge.Fail { background: rgba(207,59,54,.1); color: #cf3b36; } .badge.Perlu { background: rgba(168,118,15,.1); color: #a8760f; }
+  .finding .body { display: grid; grid-template-columns: 1fr 62mm; gap: 14pt; padding: 12pt; font-size: 9.5pt; }
+  .label { font-size: 8pt; color: #858a96; margin-bottom: 2pt; }
+  .finding ol { margin: 0; padding-left: 14pt; } .finding ol li { margin: 1pt 0; }
+  .two { display: grid; grid-template-columns: 1fr 1fr; gap: 10pt; margin-top: 8pt; }
+  .block { margin-top: 8pt; }
+  .tech { color: #cf3b36; font-size: 8.5pt; }
+  figure { margin: 0; } figure .shot { border: 1px solid #e1e4ea; border-radius: 4pt; overflow: hidden; background: #fff; }
+  figure img { display: block; width: 100%; height: auto; max-height: 90mm; object-fit: cover; object-position: top; }
+  figure.fail .shot { border-color: rgba(207,59,54,.5); }
+  figcaption { font-size: 8pt; color: #585d69; margin-top: 3pt; }
+  table { width: 100%; border-collapse: collapse; border: 1px solid #e1e4ea; font-size: 9.5pt; }
+  thead { background: #f7f8fa; } th { text-align: left; font-weight: 500; font-size: 8.5pt; color: #585d69; padding: 6pt 8pt; border-bottom: 1px solid #e1e4ea; }
+  td { padding: 6pt 8pt; border-top: 1px solid #e1e4ea; vertical-align: top; } tr { break-inside: avoid; }
+  td.id { font-size: 8.5pt; white-space: nowrap; } td.status { font-weight: 500; white-space: nowrap; }
+  footer.doc { margin-top: 24pt; padding-top: 10pt; border-top: 1px solid #e1e4ea; font-size: 8pt; color: #858a96; }
+</style>
+</head>
+<body>
+<article>
+  <header class="doc">
+    <div class="brand">
+      <div class="logo"><div class="mark"><span></span></div>QA Agent{% if company %} <span class="dim">·</span> <span class="muted">{{ company }}</span>{% endif %}</div>
+      <span class="mono dim">{{ run_code }}</span>
+    </div>
+    <div>
+      <h1>Laporan Hasil Pengujian</h1>
+      <div class="subtitle">{{ subtitle }}</div>
+    </div>
+    <dl class="meta">
+      <div><dt>Aplikasi</dt><dd class="mono">{{ target }}</dd></div>
+      <div><dt>Environment</dt><dd>{{ environment }}</dd></div>
+      <div><dt>Tanggal pengujian</dt><dd>{{ tested_at }}</dd></div>
+      <div><dt>Durasi</dt><dd>{{ duration }}</dd></div>
+      <div><dt>Model AI</dt><dd class="mono">{{ model }}</dd></div>
+      <div><dt>Status review</dt><dd>{{ review_status }}</dd></div>
+    </dl>
+  </header>
+
+  {% if cases %}
+  <section>
+    <h2>Ringkasan</h2>
+    <div class="boxes">
+      <div><b>{{ counts.total }}</b><span>Test case</span></div>
+      <div><b class="pass">{{ counts.Pass }}</b><span>Pass</span></div>
+      <div><b class="fail">{{ counts.Fail }}</b><span>Fail</span></div>
+      <div><b class="review">{{ counts.Review }}</b><span>Perlu Review</span></div>
+      <div><b class="blocked">{{ counts.Blocked }}</b><span>Blocked</span></div>
+    </div>
+    <p class="summary">{{ summary }}</p>
+  </section>
+
+  {% if findings %}
+  <section>
+    <h2>Temuan</h2>
+    {% for f in findings %}
+    <div class="finding">
+      <div class="head">
+        <div><span class="mono dim" style="font-size:8.5pt;margin-right:8pt">{{ f.code }}</span><span class="title">{{ f.title }}</span></div>
+        <span class="badge {{ f.status.split(' ')[0] }}">{{ f.badge }}</span>
+      </div>
+      <div class="body">
+        <div>
+          <div class="label">Langkah reproduksi ({{ f.tc_id }})</div>
+          <ol>{% for s in f.repro %}<li>{{ s }}</li>{% endfor %}</ol>
+          <div class="two">
+            <div><div class="label">Expected</div>{{ f.expected }}</div>
+            <div><div class="label">Actual</div>{{ f.actual or "-" }}</div>
+          </div>
+          {% if f.technical %}<div class="block"><div class="label">Bukti teknis</div>{% for t in f.technical %}<div class="mono tech">{{ t }}</div>{% endfor %}</div>{% endif %}
+          {% if f.note %}<div class="block"><div class="label">Catatan reviewer</div>{{ f.note }}</div>{% endif %}
+        </div>
+        {% if f.image %}
+        <figure class="{{ 'fail' if f.status == 'Fail' else '' }}">
+          <div class="shot"><img src="{{ f.image }}" alt="Evidence {{ f.tc_id }}"></div>
+          <figcaption>{{ f.caption }}</figcaption>
+        </figure>
+        {% else %}<div></div>{% endif %}
+      </div>
+    </div>
+    {% endfor %}
+  </section>
+  {% endif %}
+
+  <section>
+    <h2>Daftar test case</h2>
+    <table>
+      <thead><tr><th>ID</th><th>Skenario</th><th>Tipe</th><th>Status</th></tr></thead>
+      <tbody>
+        {% for c in cases %}
+        <tr><td class="id mono">{{ c.id }}</td><td>{{ c.title }}</td><td class="muted">{{ c.type_label }}</td><td class="status {{ c.css }}">{{ c.status }}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </section>
+  {% else %}
+  <section>
+    <h2>Inventaris fitur</h2>
+    <p class="summary">Run ini memetakan {{ screens|length }} layar dalam {{ modules|length }} modul: {{ modules|join(", ") }}.</p>
+    <table>
+      <thead><tr><th>Modul</th><th>Halaman</th><th>Fungsi</th></tr></thead>
+      <tbody>{% for s in screens %}<tr><td>{{ s.module }}</td><td>{{ s.page_name }}</td><td class="muted">{{ s.purpose }}</td></tr>{% endfor %}</tbody>
+    </table>
+  </section>
+  {% endif %}
+
+  <footer class="doc">Dibuat otomatis oleh QA Agent dan direview oleh QA. Dokumen internal.</footer>
+</article>
+</body>
+</html>

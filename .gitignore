@@ -1,5 +1,6 @@
 # Rahasia & sesi login
 .env
+.env.server
 .qa-agent/
 
 # Hasil run (berisi screenshot aplikasi)
@@ -13,3 +14,11 @@ venv/
 .pytest_cache/
 *.egg-info/
 .pytest-tmp/
+
+# Frontend dashboard
+web/node_modules/
+web/*.tsbuildinfo
+qa_agent/server/static/*
+!qa_agent/server/static/.gitkeep
+web/src/tw-candidates.css
+.claude

@@ -50,6 +50,42 @@ def test_build_survives_invalid_review_cell(tmp_path):
     assert xlsx.exists()
 
 
+def test_dashboard_review_not_overwritten_by_stale_excel(tmp_path, monkeypatch):
+    # Review dari dashboard ditulis ke review.json saat report.xlsx terkunci (gagal ditulis ulang);
+    # build berikutnya tidak boleh mengembalikan nilai lama dari Excel yang lebih tua.
+    import os
+    import time
+
+    store = sample_run(tmp_path / "run")
+    xlsx, _ = build_reports(store)
+    old = time.time() - 60
+    os.utime(xlsx, (old, old))
+    store.write_review({"TC-PEN-002": {"status_final": "Fail", "reviewer_note": "dari dashboard", "severity": "Major"}})
+    build_reports(store)
+    assert store.read_review()["TC-PEN-002"]["status_final"] == "Fail"
+    ws = load_workbook(xlsx)["Test Cases"]
+    assert ws.cell(3, TC_HEADERS.index("Status Final") + 1).value == "Fail"
+
+
+def test_build_without_excel_import(tmp_path):
+    store = sample_run(tmp_path / "run")
+    xlsx, _ = build_reports(store)
+    wb = load_workbook(xlsx)
+    wb["Test Cases"].cell(2, TC_HEADERS.index("Status Final") + 1).value = "Fail"
+    wb.save(xlsx)
+    build_reports(store, import_excel=False)
+    assert load_workbook(xlsx)["Test Cases"].cell(2, TC_HEADERS.index("Status Final") + 1).value is None
+
+
+def test_review_severity_applied(tmp_path):
+    from qa_agent.report.build import apply_review
+
+    store = sample_run(tmp_path / "run")
+    cases = store.read_testcases()
+    apply_review(cases, {"TC-PEN-002": {"status_final": "Fail", "reviewer_note": "", "severity": "Critical"}})
+    assert cases[1].severity == "Critical" and cases[1].status_final == "Fail"
+
+
 def test_import_review_without_report(tmp_path):
     store = sample_run(tmp_path / "run")
     assert import_review(store) == 0
@@ -60,3 +96,20 @@ def test_locked_report_propagates(tmp_path, monkeypatch):
     monkeypatch.setattr(Workbook, "save", lambda self, f: (_ for _ in ()).throw(PermissionError(13, "denied")))
     with pytest.raises(ReportLockedError):
         build_reports(store)
+
+
+def test_template_generic_status_not_counted_as_review(tmp_path):
+    from tests.unit.test_excel import office_template
+
+    template = office_template(tmp_path / "t.xlsx", ["No. TC", "Skenario", "Status", "Keterangan"])
+    store = sample_run(tmp_path / "run")
+    build_reports(store, template=template)
+    build_reports(store, template=template)  # impor ulang Excel versi template
+    review = store.read_review()
+    assert not any(v.get("status_final") for v in review.values())  # status = salinan status AI, bukan review
+    wb = load_workbook(store.report_xlsx)
+    ws = wb["Test Cases"]
+    ws.cell(3, 3).value = "Fail"  # reviewer mengubah TC-PEN-002 (Perlu Review → Fail)
+    wb.save(store.report_xlsx)
+    build_reports(store, template=template)
+    assert store.read_review()["TC-PEN-002"]["status_final"] == "Fail"

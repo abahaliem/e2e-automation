@@ -1,0 +1,190 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<title>Dashboard - QA Agent</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/@phosphor-icons/web@2.1.1"></script>
+<script src="assets/theme.js"></script>
+<style>body{font-family:Geist,system-ui,sans-serif;-webkit-font-smoothing:antialiased}</style>
+</head>
+<body class="bg-ink-950 text-fg min-h-[100dvh]">
+<div class="grid grid-cols-[232px_1fr] min-h-[100dvh]">
+
+  <aside class="border-r border-ink-700 bg-ink-900 flex flex-col">
+    <div class="h-16 px-5 flex items-center gap-2.5 border-b border-ink-700">
+      <div class="w-8 h-8 rounded-lg bg-accent grid place-items-center"><i class="ph-bold ph-scan text-white text-lg"></i></div>
+      <span class="font-semibold tracking-tight">QA Agent</span>
+    </div>
+    <nav class="p-3 flex flex-col gap-1 text-sm">
+      <a class="flex items-center gap-3 px-3 py-2 rounded-lg bg-ink-800 text-fg"><i class="ph ph-gauge text-lg text-accent"></i>Dashboard</a>
+      <a class="flex items-center gap-3 px-3 py-2 rounded-lg text-fg-muted"><i class="ph ph-play-circle text-lg"></i>Run baru</a>
+      <a class="flex items-center gap-3 px-3 py-2 rounded-lg text-fg-muted"><i class="ph ph-clock-counter-clockwise text-lg"></i>Riwayat run</a>
+      <a class="flex items-center gap-3 px-3 py-2 rounded-lg text-fg-muted"><i class="ph ph-squares-four text-lg"></i>Aplikasi</a>
+      <a class="flex items-center gap-3 px-3 py-2 rounded-lg text-fg-muted"><i class="ph ph-device-mobile text-lg"></i>Perangkat</a>
+      <a class="flex items-center gap-3 px-3 py-2 rounded-lg text-fg-muted"><i class="ph ph-gear-six text-lg"></i>Pengaturan</a>
+    </nav>
+    <div class="mt-auto m-3 p-3 rounded-lg border border-ink-700 text-xs">
+      <div class="flex items-center gap-2 text-fg"><span class="w-2 h-2 rounded-full bg-pass"></span>AI kantor terhubung</div>
+      <div class="mt-1 font-mono text-fg-dim">z-ai/glm-5.3-flash</div>
+    </div>
+  </aside>
+
+  <main class="px-10 py-8 flex flex-col gap-8">
+    <header class="flex items-end justify-between">
+      <div>
+        <h1 class="text-2xl font-semibold tracking-tight">Dashboard</h1>
+        <p class="mt-1 text-fg-muted text-sm">Ringkasan pengujian web dan Android dalam 30 hari terakhir.</p>
+      </div>
+      <div class="flex items-center gap-3">
+        <div class="h-10 px-4 rounded-lg bg-ink-900 border border-ink-700 flex items-center gap-2 text-sm"><i class="ph ph-calendar-blank text-fg-muted"></i>30 hari terakhir<i class="ph ph-caret-down text-fg-muted"></i></div>
+        <button class="h-10 px-5 rounded-lg bg-accent text-white font-semibold text-sm flex items-center gap-2"><i class="ph-fill ph-play"></i>Run baru</button>
+      </div>
+    </header>
+
+    <!-- Angka utama -->
+    <section class="grid grid-cols-[1.4fr_1fr_1fr_1fr] rounded-xl border border-ink-700 bg-ink-900 divide-x divide-ink-700">
+      <div class="p-5">
+        <div class="text-sm text-fg-muted">Total pengujian</div>
+        <div class="mt-2 flex items-end gap-6">
+          <div class="text-4xl font-semibold tracking-tight">48</div>
+          <div class="flex gap-5 text-sm pb-1">
+            <span class="flex items-center gap-1.5"><i class="ph ph-globe text-accent"></i><span class="font-medium">31</span><span class="text-fg-muted">Web</span></span>
+            <span class="flex items-center gap-1.5"><i class="ph ph-android-logo text-pass"></i><span class="font-medium">17</span><span class="text-fg-muted">Android</span></span>
+          </div>
+        </div>
+        <div class="mt-4 h-2 rounded-full overflow-hidden flex"><div class="bg-accent" style="width:64.6%"></div><div class="bg-pass" style="width:35.4%"></div></div>
+      </div>
+      <div class="p-5">
+        <div class="text-sm text-fg-muted">Test case dijalankan</div>
+        <div class="mt-2 text-4xl font-semibold tracking-tight">612</div>
+        <div class="mt-3 text-sm text-fg-muted">dari 9 aplikasi</div>
+      </div>
+      <div class="p-5">
+        <div class="text-sm text-fg-muted">Temuan</div>
+        <div class="mt-2 text-4xl font-semibold tracking-tight">23</div>
+        <div class="mt-3 text-sm flex gap-3"><span class="text-fail">14 Fail</span><span class="text-review">9 Perlu Review</span></div>
+      </div>
+      <div class="p-5">
+        <div class="text-sm text-fg-muted">Pass rate</div>
+        <div class="mt-2 text-4xl font-semibold tracking-tight">81,4%</div>
+        <div class="mt-3 text-sm text-pass flex items-center gap-1"><i class="ph ph-trend-up"></i>naik 6,2% dari bulan lalu</div>
+      </div>
+    </section>
+
+    <div class="grid grid-cols-[minmax(0,1fr)_300px] gap-8">
+      <div class="flex flex-col gap-8 min-w-0">
+
+        <!-- Sedang berjalan -->
+        <section class="flex flex-col gap-3">
+          <h2 class="font-semibold">Sedang berjalan <span class="text-fg-dim font-normal">2</span></h2>
+          <div class="grid grid-cols-2 gap-4">
+            <article class="rounded-xl border border-ink-700 bg-ink-900 overflow-hidden">
+              <div class="bg-white aspect-[16/7] overflow-hidden border-b border-ink-700"><img src="assets/live-web.png" alt="Layar live run Web HR" class="w-[190%] max-w-none"></div>
+              <div class="p-4">
+                <div class="flex items-center justify-between">
+                  <div class="flex items-center gap-2 font-medium"><i class="ph ph-globe text-accent"></i>Web HR</div>
+                  <span class="inline-flex items-center gap-1.5 text-xs text-accent font-medium"><span class="w-1.5 h-1.5 rounded-full bg-accent"></span>Berjalan</span>
+                </div>
+                <div class="mt-1 text-sm text-fg-muted">Uji modul Pengguna</div>
+                <div class="mt-3 flex items-center justify-between text-xs text-fg-muted"><span>Test case 3 dari 15</span><span class="font-mono">08:42</span></div>
+                <div class="mt-1.5 h-1.5 rounded-full bg-ink-800 overflow-hidden"><div class="h-full bg-accent" style="width:20%"></div></div>
+                <button class="mt-4 h-9 w-full rounded-lg border border-ink-600 text-sm flex items-center justify-center gap-2"><i class="ph ph-monitor-play"></i>Lihat live</button>
+              </div>
+            </article>
+            <article class="rounded-xl border border-ink-700 bg-ink-900 overflow-hidden">
+              <div class="aspect-[16/7] bg-ink-850 border-b border-ink-700 grid place-items-center">
+                <div class="flex flex-col items-center gap-2 text-fg-muted"><i class="ph ph-device-mobile-camera text-3xl"></i><span class="text-xs">Galaxy A54 tersambung</span></div>
+              </div>
+              <div class="p-4">
+                <div class="flex items-center justify-between">
+                  <div class="flex items-center gap-2 font-medium"><i class="ph ph-android-logo text-pass"></i>HR Mobile</div>
+                  <span class="inline-flex items-center gap-1.5 text-xs text-review font-medium"><i class="ph-fill ph-pause-circle"></i>Dijeda</span>
+                </div>
+                <div class="mt-1 text-sm text-fg-muted">Jelajahi seluruh aplikasi</div>
+                <div class="mt-3 flex items-center justify-between text-xs text-fg-muted"><span>11 layar dipetakan</span><span class="font-mono">14:05</span></div>
+                <div class="mt-1.5 h-1.5 rounded-full bg-ink-800 overflow-hidden"><div class="h-full bg-review" style="width:46%"></div></div>
+                <button class="mt-4 h-9 w-full rounded-lg border border-ink-600 text-sm flex items-center justify-center gap-2"><i class="ph ph-play"></i>Lanjutkan</button>
+              </div>
+            </article>
+          </div>
+        </section>
+
+        <!-- Selesai -->
+        <section class="flex flex-col gap-3">
+          <div class="flex items-center justify-between">
+            <h2 class="font-semibold">Selesai</h2>
+            <a class="text-sm text-accent">Lihat semua riwayat</a>
+          </div>
+          <div class="rounded-xl border border-ink-700 bg-ink-900 overflow-hidden">
+            <table class="w-full text-sm [&_td]:whitespace-nowrap [&_th]:whitespace-nowrap">
+              <thead class="text-left text-xs text-fg-muted bg-ink-850 border-b border-ink-700">
+                <tr><th class="px-4 py-2.5 font-medium">Aplikasi</th><th class="px-4 py-2.5 font-medium">Cakupan</th><th class="px-4 py-2.5 font-medium">Hasil</th><th class="px-4 py-2.5 font-medium">Selesai</th><th class="px-4 py-2.5 font-medium text-right">Dokumen</th></tr>
+              </thead>
+              <tbody class="divide-y divide-ink-700">
+                <tr>
+                  <td class="px-4 py-3"><div class="flex items-center gap-2"><i class="ph ph-globe text-accent"></i><span class="font-medium">Portal Vendor</span></div></td>
+                  <td class="px-4 py-3 text-fg-muted">Modul Pengadaan</td>
+                  <td class="px-4 py-3"><div class="flex gap-3 text-xs"><span class="text-pass">12 Pass</span><span class="text-fail">1 Fail</span></div></td>
+                  <td class="px-4 py-3 text-fg-muted">Hari ini, 10.12</td>
+                  <td class="px-4 py-3"><div class="flex justify-end gap-2"><button class="h-8 px-2.5 rounded-md border border-ink-700 text-xs flex items-center gap-1.5"><i class="ph ph-file-xls text-pass"></i>Excel</button><button class="h-8 px-2.5 rounded-md border border-ink-700 text-xs flex items-center gap-1.5"><i class="ph ph-file-html text-accent"></i>HTML</button></div></td>
+                </tr>
+                <tr>
+                  <td class="px-4 py-3"><div class="flex items-center gap-2"><i class="ph ph-android-logo text-pass"></i><span class="font-medium">Absensi Online</span></div></td>
+                  <td class="px-4 py-3 text-fg-muted">Modul Cuti</td>
+                  <td class="px-4 py-3"><div class="flex gap-3 text-xs"><span class="text-pass">9 Pass</span><span class="text-review">2 Review</span></div></td>
+                  <td class="px-4 py-3 text-fg-muted">Kemarin, 16.40</td>
+                  <td class="px-4 py-3"><div class="flex justify-end gap-2"><button class="h-8 px-2.5 rounded-md border border-ink-700 text-xs flex items-center gap-1.5"><i class="ph ph-file-xls text-pass"></i>Excel</button><button class="h-8 px-2.5 rounded-md border border-ink-700 text-xs flex items-center gap-1.5"><i class="ph ph-file-html text-accent"></i>HTML</button></div></td>
+                </tr>
+                <tr>
+                  <td class="px-4 py-3"><div class="flex items-center gap-2"><i class="ph ph-globe text-accent"></i><span class="font-medium">Web HR</span></div></td>
+                  <td class="px-4 py-3 text-fg-muted">Seluruh aplikasi</td>
+                  <td class="px-4 py-3"><div class="text-xs text-fg-muted">23 layar, 6 modul</div></td>
+                  <td class="px-4 py-3 text-fg-muted">Kemarin, 09.05</td>
+                  <td class="px-4 py-3"><div class="flex justify-end gap-2"><button class="h-8 px-2.5 rounded-md border border-ink-700 text-xs flex items-center gap-1.5"><i class="ph ph-file-xls text-pass"></i>Excel</button><button class="h-8 px-2.5 rounded-md border border-ink-700 text-xs flex items-center gap-1.5"><i class="ph ph-file-html text-accent"></i>HTML</button></div></td>
+                </tr>
+                <tr>
+                  <td class="px-4 py-3"><div class="flex items-center gap-2"><i class="ph ph-android-logo text-pass"></i><span class="font-medium">HR Mobile</span></div></td>
+                  <td class="px-4 py-3 text-fg-muted">Modul Slip Gaji</td>
+                  <td class="px-4 py-3"><div class="flex gap-3 text-xs"><span class="text-pass">7 Pass</span><span class="text-fail">3 Fail</span><span class="text-fg-dim">1 Blocked</span></div></td>
+                  <td class="px-4 py-3 text-fg-muted">3 Nov, 14.22</td>
+                  <td class="px-4 py-3"><div class="flex justify-end gap-2"><button class="h-8 px-2.5 rounded-md border border-ink-700 text-xs flex items-center gap-1.5"><i class="ph ph-file-xls text-pass"></i>Excel</button><button class="h-8 px-2.5 rounded-md border border-ink-700 text-xs flex items-center gap-1.5"><i class="ph ph-file-html text-accent"></i>HTML</button></div></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </div>
+
+      <!-- Temuan terbaru -->
+      <aside class="flex flex-col gap-3">
+        <h2 class="font-semibold">Temuan terbaru</h2>
+        <div class="rounded-xl border border-ink-700 bg-ink-900 divide-y divide-ink-700">
+          <div class="p-4">
+            <div class="flex items-center justify-between text-xs"><span class="px-1.5 py-0.5 rounded bg-fail/10 text-fail font-medium">Fail, Major</span><span class="text-fg-dim">Web HR</span></div>
+            <div class="mt-2 text-sm font-medium">Nama dengan apostrof menyebabkan error server</div>
+            <div class="mt-1 font-mono text-xs text-fg-dim">HTTP 500 POST /users</div>
+          </div>
+          <div class="p-4">
+            <div class="flex items-center justify-between text-xs"><span class="px-1.5 py-0.5 rounded bg-review/10 text-review font-medium">Perlu Review</span><span class="text-fg-dim">Web HR</span></div>
+            <div class="mt-2 text-sm font-medium">Email tanpa format valid tetap tersimpan</div>
+            <div class="mt-1 font-mono text-xs text-fg-dim">TC-PEN-002</div>
+          </div>
+          <div class="p-4">
+            <div class="flex items-center justify-between text-xs"><span class="px-1.5 py-0.5 rounded bg-fail/10 text-fail font-medium">Fail, Major</span><span class="text-fg-dim">HR Mobile</span></div>
+            <div class="mt-2 text-sm font-medium">Aplikasi tertutup saat membuka slip gaji bulan lalu</div>
+            <div class="mt-1 font-mono text-xs text-fg-dim">Crash, id.kantor.hrmobile</div>
+          </div>
+          <div class="p-4">
+            <div class="flex items-center justify-between text-xs"><span class="px-1.5 py-0.5 rounded bg-fail/10 text-fail font-medium">Fail, Minor</span><span class="text-fg-dim">Portal Vendor</span></div>
+            <div class="mt-2 text-sm font-medium">Tombol Ekspor tidak merespons</div>
+            <div class="mt-1 font-mono text-xs text-fg-dim">TC-PGD-008</div>
+          </div>
+        </div>
+      </aside>
+    </div>
+  </main>
+</div>
+</body>
+</html>
