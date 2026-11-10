@@ -53,7 +53,21 @@ export function GuidePage() {
       body: (
         <>
           Web: isi URL aplikasi. Android: pilih paket aplikasi di HP. Lalu tambahkan <b>akun test</b> (username dan password) bila
-          aplikasi butuh login. Agent memakai akun ini untuk login; password tidak pernah dikirim ke AI.
+          aplikasi butuh login. Agent memakai akun ini untuk login; password tidak pernah dikirim ke AI. Di halaman yang sama
+          (opsional):
+          <ul className="mt-1.5 list-disc space-y-1 pl-5">
+            <li>
+              <b>Data uji</b>: data yang harus sudah ada di aplikasi, mis. nomor work order. Tulis <Code>{"{{data:wo_id}}"}</Code> di
+              langkah test case; tiap test case memakai nilai yang belum terpakai.
+            </li>
+            <li>
+              <b>Persiapan otomatis (HTTP)</b>: panggil endpoint internal sebelum run/test case, mis. membuat WO uji baru, dan simpan
+              ID-nya ke Data uji.
+            </li>
+            <li>
+              Aplikasi yang tidak dipakai lagi bisa <b>dihapus</b> beserta riwayat run-nya (ada konfirmasi).
+            </li>
+          </ul>
         </>
       ),
     },
@@ -123,6 +137,17 @@ export function GuidePage() {
         <>
           Di halaman <b>Hasil</b>, cek setiap temuan: atur <b>Status final</b>, <b>Severity</b>, dan <b>Catatan reviewer</b>. Unduh
           dokumen <b>Excel</b> (test case) dan <b>Laporan PDF</b> (evidence). Temuan bisa disalin sebagai laporan bug (Jira).
+          Supaya dokumen sesuai format kantor, atur sekali di <b>Pengaturan → Laporan</b>:
+          <ul className="mt-1.5 list-disc space-y-1 pl-5">
+            <li>
+              <b>Logo dan nama perusahaan</b> tampil di kepala Laporan PDF.
+            </li>
+            <li>
+              <b>Template Excel kantor</b> (mis. form UAT): judul kolom boleh di baris mana pun, isian kepala dokumen (Project, UAT
+              Date, QA/Tester, dll.) diisi, status ditulis dengan kosakata template (Passed/Failed, ✓/!/X), dan tabel diperpanjang
+              otomatis dengan rekap ikut bergeser. Review yang diisi di Excel tetap terbaca kembali.
+            </li>
+          </ul>
         </>
       ),
     },
@@ -131,7 +156,10 @@ export function GuidePage() {
       body: (
         <>
           Setelah developer memperbaiki bug, buka hasil run lalu klik <b>Ulang dengan test case sama</b>. Test case tidak disusun
-          ulang oleh AI, jadi hasilnya bisa dibandingkan. Run lama yang tidak dipakai bisa dihapus di <b>Riwayat run</b>.
+          ulang oleh AI, jadi hasilnya bisa dibandingkan. Test case yang <b>Pass</b> direkam sebagai skrip, dan saat regresi
+          <b> diputar ulang tanpa AI</b> (pilihan <b>Putar ulang skrip rekaman tanpa AI</b>): lebih cepat, hemat, dan konsisten. Bila
+          tombol berubah atau layar akhir berbeda, AI memperbaiki skripnya otomatis (<b>Perbaiki dengan AI bila skrip gagal</b>).
+          Langkah dari skrip ditandai <b>Skrip</b> di layar live. Run lama yang tidak dipakai bisa dihapus di <b>Riwayat run</b>.
         </>
       ),
     },
@@ -196,8 +224,21 @@ export function GuidePage() {
             dev-cmc dan cmc-tools, dianggap aplikasi yang berbeda.
           </Faq>
           <Faq q="Modul yang muncul sedikit, menu lain tidak terpetakan">
-            Biasanya ada popup atau form yang menutupi halaman utama saat penjelajahan. Jalankan <b>Seluruh aplikasi</b> lagi saat
-            popup itu tidak muncul, atau pakai <b>Ambil alih</b> untuk menutupnya.
+            Saat agent bertanya di akhir penjelajahan, pilih <b>Lanjutkan memetakan</b> supaya tombol yang belum dicoba ikut
+            dibuka. Bila ada menu tersembunyi, klik <b>Ambil alih</b>, buka menunya di layar live, lalu <b>Lanjutkan memetakan</b>.
+          </Faq>
+          <Faq q="Test case Blocked: Data uji habis">
+            Semua nilai pada kumpulan data itu sudah terpakai. Tambahkan nilai baru di <b>Aplikasi → Data uji</b>, atau klik ikon
+            <b> pakai lagi</b> pada nilai yang datanya sudah dikembalikan ke kondisi awal. Bisa juga dibuat otomatis lewat
+            <b> Persiapan otomatis</b>.
+          </Faq>
+          <Faq q="Excel kantor: sheet atau status tidak sesuai">
+            Di <b>Pengaturan → Laporan</b>, pilih sheet yang benar pada <b>Sheet yang dipakai</b> (sheet contoh yang sudah berisi
+            data tidak dipilih otomatis), cek pemetaan status, lalu isi kepala dokumen dan klik <b>Simpan isian</b>.
+          </Faq>
+          <Faq q="Fitur baru tidak muncul / muncul 'Endpoint tidak ditemukan'">
+            Server masih menjalankan versi lama. Hentikan server (Ctrl+C) lalu jalankan lagi <Code>qa-agent serve</Code>, kemudian
+            tekan <b>Ctrl+F5</b> di browser.
           </Faq>
           <Faq q="Login otomatis gagal">
             Periksa akun test di halaman <b>Aplikasi</b> dan pastikan run memakai akun yang benar di <b>Run baru</b>, pilihan Akun test.
