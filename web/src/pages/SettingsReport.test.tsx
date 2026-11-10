@@ -62,4 +62,29 @@ describe("Pengaturan > Laporan", () => {
     expect(screen.getByText("Pratinjau kepala PDF")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Hapus logo/ })).toBeInTheDocument();
   });
+  it("template UAT kantor: pilih sheet, lihat kosakata status, isi kepala dokumen", async () => {
+    const tpl = {
+      name: "SPN_GEN_P07_F01 UAT.xlsx", sheet: "Template", sheet_chosen: false, header_row: 12, capacity: 33,
+      sheets: [{ name: "Template", header_row: 12, score: 9, filled: false }, { name: "QM - Hendi", header_row: 6, score: 11, filled: true }],
+      columns: [{ header: "Business Process", maps_to: "Skenario" }],
+      status_options: ["Passed", "Failed", "Pending", "Blocked"],
+      status_map: { Pass: "Passed", Fail: "Failed", "Perlu Review": "Pending", Blocked: "Blocked", Skipped: "Blocked" },
+      fields: [
+        { label: "Project Name", key: "project", auto: true, value: "" },
+        { label: "Developer", key: "developer", auto: false, value: "" },
+      ],
+    };
+    mocked.reportSettings.mockResolvedValue({ company_name: "", excel_template: tpl, logo: null });
+    mocked.patchReportSettings.mockResolvedValue({ company_name: "", excel_template: tpl, logo: null });
+    renderWithProviders(<ReportTab />);
+    const user = userEvent.setup();
+    expect(await screen.findByText(/33 baris disiapkan/)).toBeInTheDocument();
+    expect(screen.getByText("otomatis: nama aplikasi")).toBeInTheDocument();
+    expect(screen.getByText("Pending")).toBeInTheDocument();
+    await user.type(screen.getByLabelText("Developer"), "Tim WFM");
+    await user.click(screen.getByRole("button", { name: /Simpan isian/ }));
+    await waitFor(() => expect(mocked.patchReportSettings).toHaveBeenCalledWith({ template_fields: { Developer: "Tim WFM" } }));
+    await user.selectOptions(screen.getByLabelText("Sheet yang dipakai"), "QM - Hendi");
+    await waitFor(() => expect(mocked.patchReportSettings).toHaveBeenCalledWith({ template_sheet: "QM - Hendi" }));
+  });
 });

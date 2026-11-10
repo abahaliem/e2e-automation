@@ -69,11 +69,11 @@ def test_download_uses_template_and_pdf_design(ctx):
     client.patch("/api/settings/report", json={"company_name": "PT Biznet"})
     rs.report_xlsx.unlink(missing_ok=True)
     r = client.get(f"/api/runs/{run_id}/download/xlsx")
-    ws = load_workbook(io.BytesIO(r.content))["Test Cases"]
+    ws = load_workbook(io.BytesIO(r.content))["Sheet"]
     assert [c.value for c in ws[1]] == ["No. TC", "Skenario Pengujian", "Status"]
     # review dari dashboard membangun ulang Excel dengan template yang sama
     client.patch(f"/api/runs/{run_id}/cases/TC-PEN-002", json={"status_final": "Fail"})
-    ws = load_workbook(rs.report_xlsx)["Test Cases"]
+    ws = load_workbook(rs.report_xlsx)["Sheet"]
     assert ws.cell(3, 3).value == "Fail"
 
 

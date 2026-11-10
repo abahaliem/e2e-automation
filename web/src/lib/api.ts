@@ -184,7 +184,8 @@ export const api = {
 
   // pengaturan laporan
   reportSettings: () => get<ReportSettings>("/api/settings/report"),
-  patchReportSettings: (body: { company_name: string }) => patch<ReportSettings>("/api/settings/report", body),
+  patchReportSettings: (body: { company_name?: string; template_fields?: Record<string, string>; template_sheet?: string }) =>
+    patch<ReportSettings>("/api/settings/report", body),
   uploadTemplate: (file: File) =>
     request<ReportSettings>(`/api/settings/report/template?filename=${encodeURIComponent(file.name)}`, {
       method: "POST",

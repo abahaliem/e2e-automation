@@ -38,6 +38,13 @@ def import_review(store: RunStore) -> int:
     return sum(1 for r in review.values() if r["status_final"] or r["reviewer_note"])
 
 
+def import_review_rows(path: Path) -> list[dict]:
+    """Baris tabel test case dari report.xlsx (format standar atau template kantor), status sudah distandarkan."""
+    from qa_agent.report.excel import _rows, status_to_standard
+
+    return [{**r, "Status Final": status_to_standard(r.get("Status Final"))} for _, r in _rows(Path(path))]
+
+
 def excel_is_newer(store: RunStore) -> bool:
     """Editan di report.xlsx hanya diimpor bila file Excel lebih baru dari review.json.
 
@@ -50,7 +57,9 @@ def excel_is_newer(store: RunStore) -> bool:
     return store.report_xlsx.stat().st_mtime >= store.review_path.stat().st_mtime
 
 
-def build_reports(store: RunStore, *, import_excel: bool = True, template: Path | None = None) -> tuple[Path, Path]:
+def build_reports(store: RunStore, *, import_excel: bool = True, template: Path | None = None,
+                  fields: dict[str, str] | None = None, context: dict[str, str] | None = None,
+                  sheet: str | None = None) -> tuple[Path, Path]:
     """`template` = template Excel kantor (Pengaturan > Laporan); None = format standar mockup 09."""
     # Editan reviewer di report.xlsx yang belum diimpor tidak boleh hilang saat laporan ditulis ulang.
     if import_excel and excel_is_newer(store):
@@ -64,6 +73,7 @@ def build_reports(store: RunStore, *, import_excel: bool = True, template: Path 
     steps = store.read_steps()
     app_map = store.read_app_map()
     write_report_xlsx(store.report_xlsx, meta, cases, steps, app_map,
-                      template=template if template and Path(template).is_file() else None)
+                      template=template if template and Path(template).is_file() else None,
+                      fields=fields, context=context, sheet=sheet)
     write_report_html(store.report_html, store.root, meta, cases, steps, app_map)
     return store.report_xlsx, store.report_html

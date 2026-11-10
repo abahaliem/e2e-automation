@@ -791,6 +791,9 @@ class Store:
                     (run_id, c.id, c.module, c.title, c.type, c.status_ai, c.status_final, c.severity, start + n))
             self._db.commit()
 
+    def run_by_folder(self, folder: str) -> RunRow | None:
+        return self._run(self._one("SELECT * FROM runs WHERE folder=? ORDER BY id DESC LIMIT 1", (folder,)))
+
     def delete_run(self, run_id: int) -> None:
         with self._lock:
             self._db.execute("DELETE FROM test_cases_index WHERE run_id=?", (run_id,))

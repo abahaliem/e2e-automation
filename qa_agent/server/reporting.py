@@ -51,6 +51,37 @@ def logo_data_uri(store: Store, settings: ServerSettings) -> str | None:
     return "data:image/png;base64," + base64.b64encode(path.read_bytes()).decode("ascii")
 
 
+KEY_TEMPLATE_FIELDS = "report.template_fields"  # JSON {label isian kepala template: nilai}
+KEY_TEMPLATE_SHEET = "report.template_sheet"  # sheet template yang dipakai (kosong = dipilih otomatis)
+AUTO_FIELDS = {"project", "date", "platform", "environment"}  # diisi otomatis dari run
+
+
+def template_fields(store: Store) -> dict[str, str]:
+    import json
+
+    try:
+        return json.loads(store.get_setting(KEY_TEMPLATE_FIELDS) or "{}")
+    except ValueError:
+        return {}
+
+
+def report_context(rs: RunStore, store: Store) -> dict[str, str]:
+    """Nilai otomatis template kantor: nama aplikasi (Project) dan peran akun test (User Role)."""
+    row = store.run_by_folder(str(rs.root))
+    if row is None:
+        return {}
+    context: dict[str, str] = {}
+    app = store.get_app(row.app_id)
+    if app is not None:
+        context["Project"] = app.name
+    account = store.get_account(row.account_id) if row.account_id else None
+    if account is not None:
+        context["Peran"] = account.role
+    return context
+
+
 def build_run_reports(rs: RunStore, store: Store, settings: ServerSettings, *, import_excel: bool = True):
-    """build_reports dengan template Excel kantor bila sudah diatur."""
-    return build_reports(rs, import_excel=import_excel, template=excel_template(store, settings))
+    """build_reports dengan template Excel kantor (tata letak bebas) bila sudah diatur."""
+    return build_reports(rs, import_excel=import_excel, template=excel_template(store, settings),
+                         fields=template_fields(store), context=report_context(rs, store),
+                         sheet=store.get_setting(KEY_TEMPLATE_SHEET))

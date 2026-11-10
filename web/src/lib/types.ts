@@ -64,7 +64,19 @@ export interface SkillsResponse {
 
 export interface ReportSettings {
   company_name: string;
-  excel_template: { name: string; columns: { header: string; maps_to: string | null }[] } | null;
+  excel_template: {
+    name: string;
+    columns: { header: string; maps_to: string | null }[];
+    /** template tata letak bebas (format kantor) */
+    sheet?: string;
+    sheets?: { name: string; header_row: number; score: number; filled: boolean }[];
+    sheet_chosen?: boolean;
+    header_row?: number;
+    capacity?: number | null;
+    status_options?: string[];
+    status_map?: Record<string, string>;
+    fields?: { label: string; key: string; auto: boolean; value: string }[];
+  } | null;
   /** logo perusahaan di kepala laporan PDF */
   logo?: { name: string; url: string } | null;
 }

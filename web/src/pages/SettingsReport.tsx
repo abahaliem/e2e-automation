@@ -1,7 +1,7 @@
 import { ArrowRight, FileHtml, FileText, FileXls, FloppyDisk, ImageSquare, Trash, UploadSimple } from "@phosphor-icons/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
-import { Alert, Button, Card, Field, Input, Skeleton } from "@/components/ui";
+import { Alert, Button, Card, Field, Input, Select, Skeleton } from "@/components/ui";
 import { api } from "@/lib/api";
 import type { ReportSettings } from "@/lib/types";
 
@@ -76,6 +76,7 @@ export function ReportTab() {
                   Hapus
                 </Button>
               </div>
+              <TemplateLayout tpl={tpl} onChange={setData} />
               <table className="w-full text-sm">
                 <thead className="border-b border-ink-700 text-left text-xs text-fg-muted">
                   <tr>
@@ -219,6 +220,102 @@ function CompanyLogo({
             <img src={logo.url} alt="" className="max-h-8 max-w-40 object-contain" />
             {company && <span className="text-sm font-semibold text-[#15171c]">{company}</span>}
           </div>
+        </div>
+      )}
+    </div>
+  );
+}
+const STATUS_ORDER = ["Pass", "Fail", "Perlu Review", "Blocked", "Skipped"];
+const FIELD_AUTO_TEXT: Record<string, string> = {
+  project: "otomatis: nama aplikasi",
+  date: "otomatis: tanggal run",
+  platform: "otomatis: Web / Android",
+  environment: "otomatis: Dev/UAT atau Production",
+};
+
+/** Template kantor tata letak bebas: sheet yang dipakai, kapasitas tabel, kosakata status, isian kepala dokumen. */
+function TemplateLayout({ tpl, onChange }: { tpl: NonNullable<ReportSettings["excel_template"]>; onChange: (d: ReportSettings) => void }) {
+  const [values, setValues] = useState<Record<string, string>>(() =>
+    Object.fromEntries((tpl.fields ?? []).map((f) => [f.label, f.value])),
+  );
+  const [saved, setSaved] = useState(false);
+  const saveFields = useMutation({
+    mutationFn: () =>
+      api.patchReportSettings({
+        template_fields: Object.fromEntries(
+          (tpl.fields ?? []).filter((f) => !f.auto && (values[f.label] ?? "").trim()).map((f) => [f.label, values[f.label].trim()]),
+        ),
+      }),
+    onSuccess: (d) => {
+      onChange(d);
+      setSaved(true);
+    },
+  });
+  const chooseSheet = useMutation({ mutationFn: (sheet: string) => api.patchReportSettings({ template_sheet: sheet }), onSuccess: onChange });
+  const sheets = tpl.sheets ?? [];
+  const manual = (tpl.fields ?? []).filter((f) => !f.auto);
+  return (
+    <div className="flex flex-col gap-4 rounded-lg border border-ink-700 p-4 text-sm">
+      <div className="grid grid-cols-[minmax(0,1fr)_auto] items-end gap-4">
+        <Field label="Sheet yang dipakai" htmlFor="rp-sheet" hint={tpl.sheet_chosen ? "Dipilih manual" : "Dipilih otomatis: sheet 'Template' / tabel kosong diutamakan"}>
+          <Select id="rp-sheet" value={tpl.sheet ?? ""} onChange={(e) => chooseSheet.mutate(e.target.value)}>
+            {sheets.map((s) => (
+              <option key={s.name} value={s.name}>
+                {s.name} (judul kolom baris {s.header_row}{s.filled ? ", berisi contoh" : ""})
+              </option>
+            ))}
+          </Select>
+        </Field>
+        <div className="pb-1 text-xs text-fg-muted">
+          Judul kolom di baris {tpl.header_row}
+          {tpl.capacity ? ` · ${tpl.capacity} baris disiapkan (tabel diperpanjang otomatis bila kurang)` : ""}
+        </div>
+      </div>
+      {tpl.status_options && tpl.status_options.length > 0 && (
+        <div>
+          <div className="mb-1.5 text-xs font-medium text-fg-muted">Status ditulis dengan kosakata template</div>
+          <div className="flex flex-wrap gap-2">
+            {STATUS_ORDER.filter((s) => tpl.status_map?.[s]).map((s) => (
+              <span key={s} className="rounded-md border border-ink-700 px-2 py-1 text-xs">
+                {s} <ArrowRight className="inline text-fg-dim" /> <b>{tpl.status_map![s]}</b>
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+      {(tpl.fields ?? []).length > 0 && (
+        <div className="flex flex-col gap-3">
+          <div className="text-xs font-medium text-fg-muted">Isian kepala dokumen</div>
+          <div className="grid grid-cols-2 gap-3">
+            {(tpl.fields ?? []).map((f) =>
+              f.auto ? (
+                <div key={f.label} className="flex flex-col gap-1">
+                  <span className="text-sm font-medium">{f.label}</span>
+                  <span className="flex h-10 items-center rounded-lg border border-dashed border-ink-600 px-3 text-xs text-fg-muted">{FIELD_AUTO_TEXT[f.key] ?? "otomatis"}</span>
+                </div>
+              ) : (
+                <Field key={f.label} label={f.label} htmlFor={`rp-field-${f.key}-${f.label}`}>
+                  <Input
+                    id={`rp-field-${f.key}-${f.label}`}
+                    value={values[f.label] ?? ""}
+                    onChange={(e) => {
+                      setSaved(false);
+                      setValues((v) => ({ ...v, [f.label]: e.target.value }));
+                    }}
+                  />
+                </Field>
+              ),
+            )}
+          </div>
+          {manual.length > 0 && (
+            <div className="flex items-center gap-3">
+              <Button size="sm" variant="primary" onClick={() => saveFields.mutate()} disabled={saveFields.isPending}>
+                <FloppyDisk />
+                Simpan isian
+              </Button>
+              {saved && <span className="text-xs text-pass">Tersimpan. Berlaku untuk laporan berikutnya.</span>}
+            </div>
+          )}
         </div>
       )}
     </div>
