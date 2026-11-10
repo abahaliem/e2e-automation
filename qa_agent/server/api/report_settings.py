@@ -9,7 +9,8 @@ from pydantic import BaseModel, Field
 
 from qa_agent.report.excel import _template_sheet
 from qa_agent.server.api import deps
-from qa_agent.server.reporting import KEY_COMPANY, KEY_TEMPLATE, KEY_TEMPLATE_NAME, excel_template, templates_dir
+from qa_agent.server.reporting import (KEY_COMPANY, KEY_LOGO, KEY_LOGO_NAME, KEY_TEMPLATE, KEY_TEMPLATE_NAME,
+                                       excel_template, logo_path, templates_dir)
 
 router = APIRouter(prefix="/api/settings", tags=["settings"])
 MAX_TEMPLATE_BYTES = 5 * 1024 * 1024
@@ -31,7 +32,12 @@ def _out(request: Request) -> dict:
                         "columns": [{"header": h, "maps_to": m} for h, m in zip(headers, columns) if h is not None]}
         except ValueError:
             template = None
-    return {"company_name": store.get_setting(KEY_COMPANY) or "", "excel_template": template}
+    logo = logo_path(store, settings)
+    logo_out = None
+    if logo is not None:
+        logo_out = {"name": store.get_setting(KEY_LOGO_NAME) or logo.name,
+                    "url": f"/api/settings/report/logo?v={int(logo.stat().st_mtime)}"}
+    return {"company_name": store.get_setting(KEY_COMPANY) or "", "excel_template": template, "logo": logo_out}
 
 
 @router.get("/report")
@@ -71,6 +77,68 @@ async def upload_template(request: Request, filename: str = "template.xlsx"):
     if old is not None and old != target:
         old.unlink(missing_ok=True)
     return _out(request)
+
+
+MAX_LOGO_BYTES = 2 * 1024 * 1024
+LOGO_BOX = (800, 300)  # cukup tajam untuk kepala dokumen A4
+
+
+@router.post("/report/logo")
+async def upload_logo(request: Request, filename: str = "logo.png"):
+    """Logo perusahaan untuk kepala laporan PDF. Disimpan ulang sebagai PNG (format & ukuran aman)."""
+    from io import BytesIO
+
+    from PIL import Image, UnidentifiedImageError
+
+    def invalid(message: str) -> JSONResponse:
+        return JSONResponse(status_code=422, content={"detail": message, "field_errors": {"logo": message}})
+
+    if not filename.lower().endswith((".png", ".jpg", ".jpeg", ".webp")):
+        return invalid("Logo harus berupa gambar PNG, JPG, atau WEBP")
+    data = await request.body()
+    if not data or len(data) > MAX_LOGO_BYTES:
+        return invalid("File logo kosong atau lebih dari 2 MB")
+    try:
+        with Image.open(BytesIO(data)) as img:
+            img.load()
+            if img.format not in ("PNG", "JPEG", "WEBP"):
+                return invalid("Logo harus berupa gambar PNG, JPG, atau WEBP")
+            logo = img.convert("RGBA")
+    except (UnidentifiedImageError, OSError, Image.DecompressionBombError):
+        return invalid("File bukan gambar yang bisa dibaca")
+    logo.thumbnail(LOGO_BOX)
+    folder = templates_dir(deps.settings(request))
+    folder.mkdir(parents=True, exist_ok=True)
+    target = folder / f"logo-{time.strftime('%Y%m%d-%H%M%S')}.png"
+    logo.save(target, "PNG")
+    store = deps.store(request)
+    old = logo_path(store, deps.settings(request))
+    store.set_setting(KEY_LOGO, target.name)
+    store.set_setting(KEY_LOGO_NAME, filename)
+    if old is not None and old != target:
+        old.unlink(missing_ok=True)
+    return _out(request)
+
+
+@router.get("/report/logo")
+def get_logo(request: Request):
+    from fastapi.responses import FileResponse
+
+    path = logo_path(deps.store(request), deps.settings(request))
+    if path is None:
+        raise deps.not_found("Logo")
+    return FileResponse(path, media_type="image/png", headers={"Cache-Control": "no-cache"})
+
+
+@router.delete("/report/logo", status_code=204)
+def delete_logo(request: Request) -> Response:
+    store = deps.store(request)
+    path = logo_path(store, deps.settings(request))
+    store.set_setting(KEY_LOGO, None)
+    store.set_setting(KEY_LOGO_NAME, None)
+    if path is not None:
+        path.unlink(missing_ok=True)
+    return Response(status_code=204)
 
 
 @router.delete("/report/template", status_code=204)

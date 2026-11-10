@@ -8,7 +8,7 @@ vi.mock("@/lib/api", async (orig) => {
   const mod = await orig<typeof import("@/lib/api")>();
   return {
     ...mod,
-    api: { ...mod.api, reportSettings: vi.fn(), patchReportSettings: vi.fn(), uploadTemplate: vi.fn(), deleteTemplate: vi.fn() },
+    api: { ...mod.api, reportSettings: vi.fn(), patchReportSettings: vi.fn(), uploadTemplate: vi.fn(), deleteTemplate: vi.fn(), uploadLogo: vi.fn(), deleteLogo: vi.fn() },
   };
 });
 const mocked = vi.mocked(api);
@@ -47,5 +47,19 @@ describe("Pengaturan > Laporan", () => {
     expect(screen.getByText("No. TC")).toBeInTheDocument();
     expect(screen.getByText("TC ID")).toBeInTheDocument();
     expect(screen.getByText("Tidak dikenali, dibiarkan kosong")).toBeInTheDocument();
+  });
+  it("unggah logo perusahaan dan tampil di pratinjau kepala PDF", async () => {
+    mocked.reportSettings.mockResolvedValue({ company_name: "PT Biznet", excel_template: null, logo: null });
+    mocked.uploadLogo.mockResolvedValue({
+      company_name: "PT Biznet", excel_template: null, logo: { name: "logo-biznet.png", url: "/api/settings/report/logo?v=1" },
+    });
+    renderWithProviders(<ReportTab />);
+    const user = userEvent.setup();
+    expect(await screen.findByText("Belum ada logo")).toBeInTheDocument();
+    await user.upload(screen.getByLabelText("File logo perusahaan"), new File(["png"], "logo-biznet.png", { type: "image/png" }));
+    expect(await screen.findByText("logo-biznet.png")).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: "Logo perusahaan" })).toHaveAttribute("src", "/api/settings/report/logo?v=1");
+    expect(screen.getByText("Pratinjau kepala PDF")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Hapus logo/ })).toBeInTheDocument();
   });
 });

@@ -11,7 +11,7 @@ from pydantic import BaseModel, Field
 from qa_agent.evidence import RunStore, slugify
 from qa_agent.models import STATUSES, QaTestCase
 from qa_agent.report.build import apply_review, import_review
-from qa_agent.server.reporting import build_run_reports, company_name
+from qa_agent.server.reporting import build_run_reports, company_name, logo_data_uri, logo_path
 from qa_agent.report.excel import ReportLockedError
 from qa_agent.report.humanize import humanize, signal_text
 from qa_agent.server.api import deps
@@ -158,10 +158,17 @@ def download(run_id: int, kind: str, request: Request) -> FileResponse:
     if kind == "html":
         return FileResponse(rs.report_html, filename=f"{base}.html", media_type="text/html")
     pdf = rs.root / "report.pdf"
-    sources = [p for p in (rs.report_html, rs.review_path, rs.testcases_path) if p.exists()]
-    stale = not pdf.exists() or any(p.stat().st_mtime > pdf.stat().st_mtime for p in sources)
+    logo = logo_path(store, settings)
+    company = company_name(store)
+    sources = [p for p in (rs.report_html, rs.review_path, rs.testcases_path, logo) if p is not None and p.exists()]
+    stamp = rs.root / "report_pdf.brand"  # logo & nama perusahaan yang dipakai PDF terakhir
+    brand = f"{company}|{logo.name if logo else ''}"
+    stale = (not pdf.exists() or any(p.stat().st_mtime > pdf.stat().st_mtime for p in sources)
+             or (stamp.read_text(encoding="utf-8") if stamp.exists() else "") != brand)
     if stale:  # dokumen PDF sesuai mockup 08 (bukan cetakan report.html)
         from qa_agent.report.pdf_doc import write_report_pdf
 
-        write_report_pdf(rs, pdf, app_name=app.name if app else "", run_id=row.id, company=company_name(store))
+        write_report_pdf(rs, pdf, app_name=app.name if app else "", run_id=row.id, company=company,
+                         logo=logo_data_uri(store, settings))
+        stamp.write_text(brand, encoding="utf-8")
     return FileResponse(pdf, filename=f"{base}.pdf", media_type="application/pdf")

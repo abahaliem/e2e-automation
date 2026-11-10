@@ -1,4 +1,4 @@
-import { ArrowRight, FileHtml, FileText, FileXls, FloppyDisk, Trash, UploadSimple } from "@phosphor-icons/react";
+import { ArrowRight, FileHtml, FileText, FileXls, FloppyDisk, ImageSquare, Trash, UploadSimple } from "@phosphor-icons/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { Alert, Button, Card, Field, Input, Skeleton } from "@/components/ui";
@@ -37,8 +37,11 @@ export function ReportTab() {
         <Card className="flex flex-col gap-4 p-6">
           <div>
             <h2 className="font-semibold">Identitas dokumen</h2>
-            <p className="mt-1 text-sm text-fg-muted">Tampil di kepala laporan PDF di samping logo QA Agent.</p>
+            <p className="mt-1 text-sm text-fg-muted">
+              Logo dan nama perusahaan tampil di kepala laporan PDF. Tanpa logo, kepala dokumen memakai logo QA Agent.
+            </p>
           </div>
+          <CompanyLogo logo={settings.data.logo ?? null} company={company} onChange={setData} onRemoved={() => qc.invalidateQueries({ queryKey: ["report-settings"] })} />
           <Field label="Nama perusahaan / instansi" htmlFor="rp-company">
             <Input id="rp-company" value={company} placeholder="PT Biznet Gio Nusantara" onChange={(e) => setCompany(e.target.value)} />
           </Field>
@@ -146,6 +149,78 @@ export function ReportTab() {
           </ul>
         </Card>
       </aside>
+    </div>
+  );
+}
+
+/** Logo perusahaan untuk kepala laporan PDF: pratinjau, ganti, hapus. */
+function CompanyLogo({
+  logo,
+  company,
+  onChange,
+  onRemoved,
+}: {
+  logo: { name: string; url: string } | null;
+  company: string;
+  onChange: (d: ReportSettings) => void;
+  onRemoved: () => void;
+}) {
+  const upload = useMutation({ mutationFn: (file: File) => api.uploadLogo(file), onSuccess: onChange });
+  const remove = useMutation({ mutationFn: api.deleteLogo, onSuccess: onRemoved });
+  return (
+    <div className="flex flex-col gap-2">
+      <span className="text-sm font-medium">Logo perusahaan</span>
+      <div className="flex items-center gap-4 rounded-lg border border-ink-700 p-4">
+        <div className="grid h-16 w-48 shrink-0 place-items-center overflow-hidden rounded-md border border-dashed border-ink-600 bg-white">
+          {logo ? (
+            <img src={logo.url} alt="Logo perusahaan" className="max-h-14 max-w-44 object-contain" />
+          ) : (
+            <ImageSquare className="text-2xl text-fg-dim" />
+          )}
+        </div>
+        <div className="min-w-0 flex-1 text-sm">
+          {logo ? (
+            <div className="truncate font-medium">{logo.name}</div>
+          ) : (
+            <div className="text-fg-muted">Belum ada logo</div>
+          )}
+          <div className="text-xs text-fg-muted">PNG, JPG, atau WEBP, maksimal 2 MB. Latar transparan terlihat paling rapi.</div>
+          <div className="mt-2 flex gap-2">
+            <label htmlFor="rp-logo" className="inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-lg border border-ink-600 px-2.5 text-xs hover:bg-ink-850">
+              <UploadSimple />
+              {upload.isPending ? "Mengunggah..." : logo ? "Ganti logo" : "Unggah logo"}
+            </label>
+            {logo && (
+              <Button size="sm" variant="ghost" className="text-fail! hover:bg-fail/5" onClick={() => remove.mutate()}>
+                <Trash />
+                Hapus logo
+              </Button>
+            )}
+          </div>
+        </div>
+      </div>
+      <input
+        id="rp-logo"
+        aria-label="File logo perusahaan"
+        type="file"
+        accept=".png,.jpg,.jpeg,.webp"
+        className="sr-only"
+        onChange={(e) => {
+          const file = e.target.files?.[0];
+          if (file) upload.mutate(file);
+          e.target.value = "";
+        }}
+      />
+      {upload.error && <Alert tone="error">{(upload.error as Error).message}</Alert>}
+      {logo && (
+        <div className="rounded-lg border border-ink-700 bg-white p-3">
+          <div className="mb-1 text-[11px] uppercase tracking-wide text-fg-dim">Pratinjau kepala PDF</div>
+          <div className="flex items-center gap-3 border-b-2 border-[#15171c] pb-2">
+            <img src={logo.url} alt="" className="max-h-8 max-w-40 object-contain" />
+            {company && <span className="text-sm font-semibold text-[#15171c]">{company}</span>}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

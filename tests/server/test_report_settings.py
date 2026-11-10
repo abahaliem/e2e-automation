@@ -38,7 +38,7 @@ def ctx(tmp_path):
 
 def test_report_settings_api(ctx):
     client, settings = ctx
-    assert client.get("/api/settings/report").json() == {"company_name": "", "excel_template": None}
+    assert client.get("/api/settings/report").json() == {"company_name": "", "excel_template": None, "logo": None}
     assert client.patch("/api/settings/report", json={"company_name": "PT Biznet"}).json()["company_name"] == "PT Biznet"
     r = client.post("/api/settings/report/template?filename=template-kantor.xlsx",
                     content=template_bytes(["No. TC", "Skenario Pengujian", "Hasil yang Diharapkan", "Kolom Lain"]))
@@ -88,3 +88,43 @@ def test_pdf_download_uses_mockup_08_document(ctx):
     assert r.status_code == 200 and r.content[:4] == b"%PDF"
     html = (rs.root / "report_pdf.html").read_text(encoding="utf-8")
     assert "Laporan Hasil Pengujian" in html and "Web HR, modul Pengguna" in html
+
+
+def png_bytes(size=(1200, 400), color=(37, 96, 232, 255)):
+    from PIL import Image
+
+    buf = io.BytesIO()
+    Image.new("RGBA", size, color).save(buf, "PNG")
+    return buf.getvalue()
+
+
+def test_company_logo_upload_preview_delete(ctx):
+    from PIL import Image
+
+    client, settings = ctx
+    r = client.post("/api/settings/report/logo?filename=logo-biznet.png", content=png_bytes())
+    assert r.status_code == 200, r.text
+    logo = r.json()["logo"]
+    assert logo["name"] == "logo-biznet.png" and logo["url"].startswith("/api/settings/report/logo")
+    img = client.get(logo["url"])
+    assert img.status_code == 200 and img.headers["content-type"] == "image/png"
+    shrunk = Image.open(io.BytesIO(img.content))
+    assert shrunk.width <= 800 and shrunk.height <= 300  # diperkecil untuk kepala dokumen
+    # bukan gambar / format tidak didukung / terlalu besar → ditolak
+    assert client.post("/api/settings/report/logo?filename=logo.png", content=b"bukan gambar").status_code == 422
+    r = client.post("/api/settings/report/logo?filename=logo.svg", content=b"<svg/>")
+    assert r.status_code == 422 and "PNG, JPG, atau WEBP" in r.json()["detail"]
+    assert client.post("/api/settings/report/logo?filename=big.png", content=b"x" * (2 * 1024 * 1024 + 1)).status_code == 422
+    assert client.delete("/api/settings/report/logo").status_code == 204
+    assert client.get("/api/settings/report").json()["logo"] is None
+    assert client.get("/api/settings/report/logo").status_code == 404
+
+
+def test_pdf_html_shows_company_logo(tmp_path):
+    from qa_agent.report.pdf_doc import render_pdf_html
+
+    rs = sample_run(tmp_path / "r")
+    html = render_pdf_html(rs, app_name="WFM", company="PT Biznet", logo="data:image/png;base64,AAAA")
+    assert '<img class="company-logo" src="data:image/png;base64,AAAA"' in html and "PT Biznet" in html
+    plain = render_pdf_html(rs, app_name="WFM", company="PT Biznet")
+    assert '<img class="company-logo"' not in plain and "QA Agent" in plain

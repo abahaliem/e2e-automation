@@ -86,7 +86,9 @@ def _finding(n: int, tc: QaTestCase, records: list[StepRecord], root: Path) -> d
     }
 
 
-def render_pdf_html(store: RunStore, *, app_name: str = "", run_id: int | None = None, company: str = "") -> str:
+def render_pdf_html(store: RunStore, *, app_name: str = "", run_id: int | None = None, company: str = "",
+                    logo: str | None = None) -> str:
+    """`logo`: data URI PNG logo perusahaan (Pengaturan > Laporan) untuk kepala dokumen."""
     meta = store.read_meta()
     cases = store.read_testcases()
     apply_review(cases, store.read_review())
@@ -104,6 +106,7 @@ def render_pdf_html(store: RunStore, *, app_name: str = "", run_id: int | None =
     name = app_name or parts.netloc or meta.target
     context = {
         "company": company,
+        "logo": logo,
         "run_code": f"RUN-{started:%Y%m%d-%H%M}" + (f" #{run_id}" if run_id else ""),
         "subtitle": f"{name}, modul {meta.module}" if meta.module else f"{name}, seluruh aplikasi",
         "target": parts.netloc + (parts.path if parts.scheme == "android" else "") or meta.target,

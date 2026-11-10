@@ -176,6 +176,13 @@ export const api = {
       headers: { "content-type": "application/octet-stream" },
     }),
   deleteTemplate: () => del("/api/settings/report/template"),
+  uploadLogo: (file: File) =>
+    request<ReportSettings>(`/api/settings/report/logo?filename=${encodeURIComponent(file.name)}`, {
+      method: "POST",
+      body: file,
+      headers: { "content-type": "application/octet-stream" },
+    }),
+  deleteLogo: () => del("/api/settings/report/logo"),
 
   // perangkat Android
   listDevices: () => get<{ devices: Device[] }>("/api/devices"),

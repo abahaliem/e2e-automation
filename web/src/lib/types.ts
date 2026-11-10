@@ -65,6 +65,8 @@ export interface SkillsResponse {
 export interface ReportSettings {
   company_name: string;
   excel_template: { name: string; columns: { header: string; maps_to: string | null }[] } | null;
+  /** logo perusahaan di kepala laporan PDF */
+  logo?: { name: string; url: string } | null;
 }
 
 export interface Device {
