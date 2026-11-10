@@ -9,6 +9,8 @@ from pydantic import BaseModel, ValidationError, field_validator
 
 from qa_agent.agent import prompts
 from qa_agent.agent.control import RunControl
+from qa_agent.agent.script import ScriptPlayer, TestScript, build_script
+from qa_agent.evidence import Masker
 from qa_agent.agent.loop import AgentLoop, LoopOutcome
 from qa_agent.agent.parser import ActionParseError, extract_json
 from qa_agent.drivers.base import Driver
@@ -238,7 +240,8 @@ LOGOUT_GOAL = (
 class DeepRunner:
     def __init__(self, *, driver: Driver, loop: AgentLoop, auth: AuthManager | None, store: RunStore,
                  should_stop: Callable[[], bool] = lambda: False,
-                 on_event: Callable[[dict], None] = lambda e: None, control: RunControl | None = None) -> None:
+                 on_event: Callable[[dict], None] = lambda e: None, control: RunControl | None = None,
+                 scripts: dict[str, TestScript] | None = None, heal: bool = True) -> None:
         self.driver = driver
         self.loop = loop
         self.auth = auth
@@ -246,6 +249,10 @@ class DeepRunner:
         self.should_stop = should_stop
         self.on_event = on_event
         self.control = control
+        # Regresi: skrip rekaman run sumber diputar ulang tanpa AI; gagal → diperbaiki AI bila heal
+        self.scripts = dict(scripts or {})
+        self.heal = heal
+        self.recorded: dict[str, TestScript] = store.read_scripts()  # skrip test case Pass di run ini
         self._logout_steps: list[dict] | None = None  # jalur logout yang berhasil, diputar ulang tanpa AI
         self._logouts = 0
         self._unreachable: dict[str, tuple[str, str]] = {}  # layar awal → (TC pertama yang gagal, alasan)
@@ -298,7 +305,38 @@ class DeepRunner:
                 prep_errors = [s.message for s in getattr(self.loop, "last_signals", [])
                                if s.kind in ("ui_error", "page_error", "console_error")
                                or (s.kind == "http_error" and (s.status or 0) >= 500)]
-                outcome = self.loop.run(tc.id, goal_for(tc, start_problem), allow_logout=is_logout_case(tc))
+                outcome, run_note, prefix_steps, by_ai = None, "", None, True
+                script = self.scripts.get(tc.id) if not start_problem else None
+                if script is not None and script.title and script.title != tc.title:
+                    script = None  # test case diedit/diurutkan ulang saat review: skrip lama bukan untuknya
+                heal_note = ""
+                if script is not None:
+                    played = self._player().play(tc.id, script)
+                    if played.interrupted:
+                        self._emit({"type": "tc.finished", "tc_id": tc.id, "status": None})
+                        break
+                    if played.ok:
+                        outcome, by_ai = LoopOutcome(final="done", status="pass", steps=played.steps, signals=played.signals,
+                                                     actual="Semua langkah skrip rekaman berhasil dan layar akhir sesuai."), False
+                        run_note = "Dijalankan dari skrip rekaman (tanpa AI)."
+                        self.recorded[tc.id] = script
+                    elif played.guard_blocked:
+                        outcome, by_ai = LoopOutcome(final="blocked", reason=played.reason, guard_blocks=1,
+                                                     signals=played.signals), False
+                    elif not self.heal:
+                        outcome, by_ai = LoopOutcome(final="done", status="fail", actual=played.reason,
+                                                     signals=played.signals), False
+                        run_note = "Skrip rekaman tidak cocok lagi dengan aplikasi; perbaikan oleh AI dimatikan."
+                    else:
+                        failed = played.failed_step or (len(script.steps) + 1)
+                        prefix_steps = script.steps[:failed - 1]
+                        heal_note = (f"\nCATATAN SISTEM: skrip rekaman test case ini sudah dijalankan sampai langkah "
+                                     f"{failed - 1} lalu gagal: {played.reason}. Lanjutkan test case dari layar saat ini "
+                                     "sampai expected result bisa dinilai.\n")
+                        run_note = f"Skrip rekaman gagal ({played.reason}); diperbaiki AI."
+                if outcome is None:
+                    outcome = self.loop.run(tc.id, goal_for(tc, start_problem) + heal_note,
+                                            allow_logout=is_logout_case(tc))
                 if outcome.error_kind == "interrupted":
                     self._emit({"type": "tc.finished", "tc_id": tc.id, "status": None})
                     break  # biarkan status kosong supaya dijalankan ulang saat resume
@@ -307,8 +345,15 @@ class DeepRunner:
                 elif start_problem:
                     self._unreachable.pop(start, None)
                 tc.status_ai, tc.severity = judge(outcome, tc)
+                if script is not None and not self.heal and outcome.status == "fail" and tc.status_ai == "Fail" \
+                        and not any(s.kind == "page_error" or (s.status or 0) >= 500 for s in outcome.signals):
+                    tc.status_ai, tc.severity = "Perlu Review", None  # skrip usang bukan bukti bug
                 tc.actual = outcome.actual or outcome.reason
                 tc.ai_note = outcome.reason if outcome.final == "blocked" else ""
+                if run_note:
+                    tc.ai_note = f"{run_note} {tc.ai_note}".strip()
+                if by_ai and tc.status_ai == "Pass":
+                    self._record_script(tc, prefix_steps)
                 if prep_errors:
                     note = "Saat login/logout otomatis sebelum test case ini muncul: " + "; ".join(dict.fromkeys(prep_errors))
                     tc.ai_note = f"{tc.ai_note} {note}".strip()
@@ -326,8 +371,30 @@ class DeepRunner:
                 tc.actual = f"Error sistem: {type(e).__name__}: {e}"
                 self._recover()
             self.store.write_testcases(cases)
+            if tc.id in self.recorded:
+                self.store.write_scripts(self.recorded)
             self._emit({"type": "tc.finished", "tc_id": tc.id, "status": tc.status_ai})
         return cases
+
+    def _player(self) -> ScriptPlayer:
+        from qa_agent.guard import Guard
+
+        return ScriptPlayer(driver=self.driver, guard=getattr(self.loop, "guard", None) or Guard("dev", []),
+                            store=self.store, masker=getattr(self.loop, "masker", None) or Masker(),
+                            control=self.control, on_event=self._emit)
+
+    def _record_script(self, tc: QaTestCase, prefix: list | None) -> None:
+        """Simpan langkah test case Pass sebagai skrip regresi (gabungan langkah skrip lama + perbaikan AI)."""
+        trace = getattr(self.loop, "last_trace", None)
+        if not isinstance(trace, dict):
+            return
+        script = build_script(tc.id, trace, getattr(self.loop, "masker", None), title=tc.title)
+        if script is None:
+            return
+        if prefix:
+            script.steps = list(prefix) + script.steps
+        self.recorded[tc.id] = script
+        self.store.write_scripts(self.recorded)
 
     def _prepare(self, tc: QaTestCase, needs_auth: bool) -> None:
         start = tc.start_url or "/"

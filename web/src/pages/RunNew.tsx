@@ -31,6 +31,8 @@ export function RunNewPage() {
   const [confirmEach, setConfirmEach] = useState(false);
   const [reviewFirst, setReviewFirst] = useState(false);
   const [askBeforeFinish, setAskBeforeFinish] = useState(true);
+  const [replayScripts, setReplayScripts] = useState(true);
+  const [heal, setHeal] = useState(true);
   // Regresi: ?reuse=<run> memakai test case run itu (tanpa AI menyusun ulang)
   const reuseId = Number(params.get("reuse")) || null;
   const [reuse, setReuse] = useState<number | null>(reuseId);
@@ -153,7 +155,7 @@ export function RunNewPage() {
         ...(platform === "android" && apk ? { apk_file: apk.file, apk_grant: apk.grant, apk_uninstall: apk.uninstall } : {}),
         ...(mode === "explore" && askBeforeFinish ? { ask_before_finish: true } : {}),
         ...(mode === "deep" && reviewFirst ? { review_first: true } : {}),
-        ...(mode === "deep" && reuse ? { reuse_cases_from: reuse } : {}),
+        ...(mode === "deep" && reuse ? { reuse_cases_from: reuse, replay_scripts: replayScripts, heal } : {}),
       };
       return api.createRun(body);
     },
@@ -484,6 +486,26 @@ export function RunNewPage() {
               Memakai test case yang sama dengan run #{reuseRun.data.id} (modul {reuseRun.data.module}) untuk regresi. AI tidak
               menyusun ulang test case.
             </Alert>
+          )}
+          {mode === "deep" && reuse && reuseRun.data && (
+            <div className="flex flex-col gap-4 rounded-lg border border-ink-700 bg-ink-900 p-4">
+              <Switch
+                id="run-replay"
+                checked={replayScripts}
+                onChange={setReplayScripts}
+                label="Putar ulang skrip rekaman tanpa AI"
+                description="Test case yang Pass di run sumber dijalankan ulang persis langkahnya: lebih cepat, hemat, dan konsisten. Test case tanpa skrip tetap dijalankan AI."
+              />
+              {replayScripts && (
+                <Switch
+                  id="run-heal"
+                  checked={heal}
+                  onChange={setHeal}
+                  label="Perbaiki dengan AI bila skrip gagal"
+                  description="Bila tombol berubah atau layar akhir tidak sesuai, AI melanjutkan test case lalu merekam skrip baru. Bila dimatikan, test case menjadi Perlu Review."
+                />
+              )}
+            </div>
           )}
           {mode === "explore" && (
             <div className="rounded-lg border border-ink-700 bg-ink-900 p-4">

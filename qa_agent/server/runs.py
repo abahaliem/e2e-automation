@@ -68,6 +68,8 @@ class RunRequest:
     review_first: bool = False  # berhenti setelah test case disusun supaya QA bisa review/edit dulu
     ask_before_finish: bool = False  # Seluruh aplikasi: tanya QA (lanjutkan memetakan / selesai) sebelum selesai
     reuse_cases_from: int | None = None  # regresi: pakai test case run lain (tanpa AI menyusun ulang)
+    replay_scripts: bool = True  # regresi: putar ulang skrip rekaman run sumber tanpa AI
+    heal: bool = True  # skrip gagal → AI melanjutkan test case lalu merekam skrip baru
 
 
 def flow_app_map(app_map: AppMap, flow_name: str) -> AppMap:
@@ -178,6 +180,8 @@ class RunManager:
                     raise ValueError("Test case run sumber tidak ditemukan untuk aplikasi ini")
                 req.module = source.module
                 options["reuse_cases_from"] = source.id
+                options["replay_scripts"] = req.replay_scripts
+                options["heal"] = req.heal
             if req.review_first:
                 options["review_first"] = True
             module = app_map.find_module(req.module or "")
@@ -535,7 +539,14 @@ class RunManager:
         if row.options.get("review_first") and not resume:
             raise RunPaused(REVIEW_NOTE)  # QA review/edit dulu; Lanjutkan = jalankan test case hasil review
         needs_auth = not all(s.public for s in app_map.screens_for(module))
-        make_runner(rt).execute(cases, needs_auth=needs_auth, public_starts={s.url for s in app_map.screens if s.public})
+        scripts = {}
+        source_id = row.options.get("reuse_cases_from")
+        if source_id and row.options.get("replay_scripts", True):
+            source_run = self.store.get_run(int(source_id))
+            if source_run is not None:
+                scripts = RunStore(Path(source_run.folder)).read_scripts()
+        runner = make_runner(rt, scripts=scripts, heal=bool(row.options.get("heal", True)))
+        runner.execute(cases, needs_auth=needs_auth, public_starts={s.url for s in app_map.screens if s.public})
 
     def _finish(self, run_id: int, rs: RunStore, meta: RunMeta | None, status: str, note: str) -> None:
         if meta is not None:

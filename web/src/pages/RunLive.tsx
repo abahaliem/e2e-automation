@@ -423,6 +423,11 @@ export function RunLivePage() {
                   <CheckCircle weight="fill" className="mt-0.5 shrink-0 text-pass" />
                 )}
                 <span className="text-fg-muted">{s.description}</span>
+                {s.actor === "script" && (
+                  <span title="Diputar ulang dari skrip rekaman, tanpa AI" className="ml-auto h-fit shrink-0 rounded bg-ink-800 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-fg-muted">
+                    Skrip
+                  </span>
+                )}
               </li>
             ))}
             {planned && (

@@ -28,6 +28,8 @@ class RunIn(BaseModel):
     review_first: bool = False
     reuse_cases_from: int | None = None
     ask_before_finish: bool = False
+    replay_scripts: bool = True
+    heal: bool = True
 
 
 class PlanCaseIn(BaseModel):
@@ -70,6 +72,7 @@ def run_out(request: Request, row: RunRow) -> dict:
     data["created_by"] = row.options.get("created_by")
     data["review_first"] = bool(row.options.get("review_first"))
     data["reuse_cases_from"] = row.options.get("reuse_cases_from")
+    data["replay_scripts"] = bool(row.options.get("reuse_cases_from") and row.options.get("replay_scripts", True))
     data["awaiting_review"] = row.status == "paused" and row.note == REVIEW_NOTE
     data["active"] = manager.is_active(row.id)
     data["control_state"] = manager.control(row.id).state if data["active"] else None

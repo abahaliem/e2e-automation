@@ -157,6 +157,9 @@ export interface RunInput {
   review_first?: boolean;
   reuse_cases_from?: number | null;
   ask_before_finish?: boolean;
+  /** regresi: putar ulang skrip rekaman tanpa AI; heal = AI memperbaiki bila skrip gagal */
+  replay_scripts?: boolean;
+  heal?: boolean;
   apk_file?: string | null;
   apk_grant?: boolean;
   apk_uninstall?: boolean;
@@ -215,7 +218,7 @@ export interface TestCase {
 export interface CaseStep {
   step_no: number;
   action: string;
-  actor: "ai" | "manual";
+  actor: "ai" | "manual" | "script";
   text: string;
   result: string;
   guard: string;
@@ -271,7 +274,7 @@ export interface StepEvent {
   result: string;
   screenshot: string | null;
   description: string;
-  actor: "ai" | "manual";
+  actor: "ai" | "manual" | "script";
   seq?: number;
 }
 
