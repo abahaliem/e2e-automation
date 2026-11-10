@@ -363,3 +363,20 @@ export type RunMap = { modules: { name: string; screens: MapScreen[] }[]; screen
 
 // ---------- modul kustom (alur bisnis) ----------
 export type Flow = { id: number; app_id: number; name: string; steps: string; created_at: string; updated_at: string };
+
+// ---------- data uji & persiapan otomatis ----------
+export type TestDataValue = { id: number; app_id: number; set_name: string; value: string; used_by: string | null; used_at: string | null };
+export type TestDataSet = { name: string; values: TestDataValue[]; available: number };
+export type Hook = {
+  id: number;
+  app_id: number;
+  name: string;
+  when: "run" | "case";
+  method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
+  url: string;
+  body: string;
+  capture: Record<string, string>;
+  active: boolean;
+  has_headers: boolean;
+};
+export type HookInput = { name: string; when: Hook["when"]; method: Hook["method"]; url: string; headers: string; body: string; capture: string };

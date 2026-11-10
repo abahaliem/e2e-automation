@@ -70,6 +70,7 @@ class RunRequest:
     reuse_cases_from: int | None = None  # regresi: pakai test case run lain (tanpa AI menyusun ulang)
     replay_scripts: bool = True  # regresi: putar ulang skrip rekaman run sumber tanpa AI
     heal: bool = True  # skrip gagal → AI melanjutkan test case lalu merekam skrip baru
+    run_setup: bool = True  # jalankan Persiapan otomatis (HTTP) aplikasi
 
 
 def flow_app_map(app_map: AppMap, flow_name: str) -> AppMap:
@@ -158,6 +159,8 @@ class RunManager:
             options["created_by"] = req.created_by
         if req.mode == "explore" and req.ask_before_finish:
             options["ask_before_finish"] = True
+        if req.mode == "deep" and not req.run_setup:
+            options["run_setup"] = False
         if app.platform == "android":
             if not (req.device_serial or "").strip():
                 raise ValueError("Pilih perangkat Android (HP atau emulator) untuk run ini")
@@ -239,6 +242,22 @@ class RunManager:
             return
         if folder.is_dir():
             shutil.rmtree(folder, ignore_errors=True)
+
+    def _skills_with_data(self, row: RunRow) -> dict:
+        """Skill QA + daftar data uji aplikasi (tahap Menyusun test case) supaya AI memakai {{data:...}}."""
+        from qa_agent.server.testdata import data_hint
+
+        skills = dict(sections_for(self.store, self.settings, row.app_id))
+        if row.mode == "deep":
+            sets: dict[str, list[str]] = {}
+            for v in self.store.list_test_data(row.app_id):
+                values = sets.setdefault(v.set_name, [])
+                if v.used_by is None:
+                    values.append(v.value)
+            hint = data_hint(sets)
+            if hint:
+                skills["plan"] = f"{skills.get('plan', '')}\n\n{hint}".strip()
+        return skills
 
     # ------------------------------------------------------------------ review test case
     def _reused_cases(self, row: RunRow) -> list[QaTestCase]:
@@ -457,7 +476,7 @@ class RunManager:
             rt = build_runtime(cfg, rs, self.settings.data_dir, environment=row.environment, llm=llm,
                                credentials=creds, api_key=api_key, control=active.control, on_event=on_event,
                                auth_state=auth_state, device_serial=row.options.get("device_serial"),
-                               skills=sections_for(self.store, self.settings, row.app_id))
+                               skills=self._skills_with_data(row))
             if meta is None:
                 meta = RunMeta(mode=row.mode, target=cfg.target.url, environment=row.environment,  # type: ignore[arg-type]
                                model=profile.model, started_at=now_iso(), module=row.module)
@@ -545,7 +564,15 @@ class RunManager:
             source_run = self.store.get_run(int(source_id))
             if source_run is not None:
                 scripts = RunStore(Path(source_run.folder)).read_scripts()
-        runner = make_runner(rt, scripts=scripts, heal=bool(row.options.get("heal", True)))
+        from qa_agent.server.testdata import DataPreparer, HookError
+
+        preparer = DataPreparer(self.store, self.secrets, app_id=row.app_id, run_id=row.id,
+                                run_hooks=bool(row.options.get("run_setup", True)))
+        try:
+            preparer.before_run()  # persiapan "sekali sebelum run"
+        except HookError as e:
+            raise RunPaused(f"{e}. Periksa Aplikasi > Persiapan otomatis") from e
+        runner = make_runner(rt, scripts=scripts, heal=bool(row.options.get("heal", True)), prepare_data=preparer)
         runner.execute(cases, needs_auth=needs_auth, public_starts={s.url for s in app_map.screens if s.public})
 
     def _finish(self, run_id: int, rs: RunStore, meta: RunMeta | None, status: str, note: str) -> None:

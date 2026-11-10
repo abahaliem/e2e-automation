@@ -13,6 +13,7 @@ vi.mock("@/lib/api", async (orig) => {
       createApp: vi.fn(),
       updateApp: vi.fn(),
       deleteApp: vi.fn(),
+      listRuns: vi.fn(),
       listAccounts: vi.fn(),
       createAccount: vi.fn(),
       updateAccountPassword: vi.fn(),
@@ -107,5 +108,22 @@ describe("Aplikasi dari tautan", () => {
     mocked.listAccounts.mockResolvedValue([]);
     renderWithProviders(<AppsPage />, { path: "/apps?app=9" });
     expect(await screen.findByDisplayValue("android://com.biznet.wfm.dev")).toBeInTheDocument();
+  });
+});
+
+describe("Hapus aplikasi", () => {
+  it("konfirmasi menyebut jumlah riwayat run yang ikut terhapus", async () => {
+    mocked.listApps.mockResolvedValue([app]);
+    mocked.listAccounts.mockResolvedValue([]);
+    mocked.listRuns.mockResolvedValue([{ id: 1 }, { id: 2 }] as never);
+    mocked.deleteApp.mockResolvedValue(undefined);
+    renderWithProviders(<AppsPage />, { path: "/apps?app=3", route: "/apps" });
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: /^Hapus$/ }));
+    const dialog = await screen.findByRole("alertdialog", { name: "Konfirmasi hapus aplikasi" });
+    expect(await within(dialog).findByText(/2 riwayat run beserta screenshot dan dokumennya/)).toBeInTheDocument();
+    expect(mocked.deleteApp).not.toHaveBeenCalled();
+    await user.click(within(dialog).getByRole("button", { name: /Ya, hapus permanen/ }));
+    await waitFor(() => expect(mocked.deleteApp).toHaveBeenCalledWith(3, true));
   });
 });

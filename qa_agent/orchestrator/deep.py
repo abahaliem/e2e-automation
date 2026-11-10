@@ -241,7 +241,10 @@ class DeepRunner:
     def __init__(self, *, driver: Driver, loop: AgentLoop, auth: AuthManager | None, store: RunStore,
                  should_stop: Callable[[], bool] = lambda: False,
                  on_event: Callable[[dict], None] = lambda e: None, control: RunControl | None = None,
-                 scripts: dict[str, TestScript] | None = None, heal: bool = True) -> None:
+                 scripts: dict[str, TestScript] | None = None, heal: bool = True,
+                 prepare_data: Callable[[QaTestCase], str | None] | None = None) -> None:
+        # prepare_data: isi data uji {{data:...}} (+ persiapan HTTP) sebelum test case; pesan = Blocked
+        self.prepare_data = prepare_data
         self.driver = driver
         self.loop = loop
         self.auth = auth
@@ -282,6 +285,15 @@ class DeepRunner:
             self.store.drop_steps(tc.id)
             self._emit({"type": "tc.started", "tc_id": tc.id, "title": tc.title})
             try:
+                if self.prepare_data is not None:
+                    problem = self.prepare_data(tc)
+                    if problem:
+                        tc.status_ai, tc.actual = "Blocked", problem
+                        tc.ai_note = "Data uji atau persiapan belum siap"
+                        self.store.write_testcases(cases)
+                        self._emit({"type": "tc.finished", "tc_id": tc.id, "status": tc.status_ai})
+                        continue
+                    self.store.write_testcases(cases)  # nilai data uji yang dipakai tercatat di test case
                 self.loop.last_signals = []
                 start = tc.start_url or "/"
                 start_problem = ""

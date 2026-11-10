@@ -30,6 +30,7 @@ class RunIn(BaseModel):
     ask_before_finish: bool = False
     replay_scripts: bool = True
     heal: bool = True
+    run_setup: bool = True
 
 
 class PlanCaseIn(BaseModel):

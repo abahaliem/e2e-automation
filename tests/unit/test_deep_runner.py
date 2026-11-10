@@ -368,3 +368,21 @@ def test_script_not_replayed_for_edited_case(tmp_path):
     loop.last_trace = TRACE
     runner.execute([tc(1)], needs_auth=True)
     assert [c[0] for c in loop.calls] == ["TC-PEN-001"]  # dijalankan AI, bukan skrip milik test case lain
+
+# ---------------------------------------------------------------- data uji sebelum test case
+def test_prepare_data_fills_placeholders_or_blocks(tmp_path):
+    def prepare(case):
+        if case.id == "TC-PEN-002":
+            return "Data uji 'wo_id' habis. Tambahkan nilai baru di Aplikasi > Data uji, lalu jalankan ulang"
+        case.steps = [s.replace("{{data:wo_id}}", "000090014541") for s in case.steps]
+        return None
+
+    runner, loop, _, _, _ = make(tmp_path, {"TC-PEN-001": PASS}, prepare_data=prepare)
+    goals = []
+    original = loop.run
+    loop.run = lambda tc_id, goal, **kw: (goals.append(goal), original(tc_id, goal, **kw))[1]
+    cases = runner.execute([tc(1, steps=["Buka WO {{data:wo_id}}"]), tc(2, steps=["Buka WO {{data:wo_id}}"])],
+                           needs_auth=True)
+    assert "Buka WO 000090014541" in goals[0] and cases[0].status_ai == "Pass"
+    assert cases[1].status_ai == "Blocked" and "habis" in cases[1].actual
+    assert [c[0] for c in loop.calls] == ["TC-PEN-001"]  # tanpa data, AI tidak dijalankan

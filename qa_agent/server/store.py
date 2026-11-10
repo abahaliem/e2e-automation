@@ -69,6 +69,28 @@ CREATE TABLE IF NOT EXISTS skills (
   active INTEGER NOT NULL DEFAULT 1,
   created_at TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS test_data (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  app_id INTEGER NOT NULL REFERENCES apps(id) ON DELETE CASCADE,
+  set_name TEXT NOT NULL COLLATE NOCASE,
+  value TEXT NOT NULL,
+  used_by TEXT,
+  used_at TEXT,
+  created_at TEXT NOT NULL,
+  UNIQUE(app_id, set_name, value)
+);
+CREATE TABLE IF NOT EXISTS hooks (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  app_id INTEGER NOT NULL REFERENCES apps(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  run_when TEXT NOT NULL DEFAULT 'case',
+  method TEXT NOT NULL DEFAULT 'POST',
+  url TEXT NOT NULL,
+  body TEXT NOT NULL DEFAULT '',
+  capture TEXT NOT NULL DEFAULT '{}',
+  active INTEGER NOT NULL DEFAULT 1,
+  created_at TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS flows (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   app_id INTEGER NOT NULL REFERENCES apps(id) ON DELETE CASCADE,
@@ -162,6 +184,30 @@ class RunRow(BaseModel):
     note: str = ""
     model: str = ""
     options: dict[str, Any] = Field(default_factory=dict)
+
+
+class TestDataRow(BaseModel):
+    """Satu nilai data uji (mis. wo_id = 000090014541); dipakai sekali lalu ditandai terpakai."""
+    __test__ = False
+    id: int
+    app_id: int
+    set_name: str
+    value: str
+    used_by: str | None = None
+    used_at: str | None = None
+
+
+class HookRow(BaseModel):
+    """Persiapan HTTP sebelum run / test case (header disimpan di penyimpanan rahasia, bukan di sini)."""
+    id: int
+    app_id: int
+    name: str
+    when: str = "case"
+    method: str = "POST"
+    url: str
+    body: str = ""
+    capture: dict[str, str] = Field(default_factory=dict)
+    active: bool = True
 
 
 class FlowRow(BaseModel):
@@ -409,6 +455,116 @@ class Store:
         return [s for s in self.list_skills()
                 if s.active and (not s.app_ids or app_id in s.app_ids) and set(s.stages) & set(stages)]
 
+    # ---------- data uji ----------
+    def add_test_data(self, app_id: int, set_name: str, values: list[str]) -> int:
+        added = 0
+        with self._lock:
+            for value in values:
+                value = value.strip()
+                if not value:
+                    continue
+                cur = self._db.execute(
+                    "INSERT OR IGNORE INTO test_data (app_id, set_name, value, created_at) VALUES (?,?,?,?)",
+                    (app_id, set_name.strip(), value, now_iso()))
+                added += cur.rowcount
+            self._db.commit()
+        return added
+
+    def list_test_data(self, app_id: int) -> list[TestDataRow]:
+        return [TestDataRow.model_validate(dict(r)) for r in
+                self._all("SELECT * FROM test_data WHERE app_id=? ORDER BY set_name, id", (app_id,))]
+
+    def take_test_data(self, app_id: int, set_name: str, used_by: str) -> str | None:
+        """Ambil nilai tersedia berikutnya dan tandai terpakai (atomik)."""
+        with self._lock:
+            row = self._db.execute(
+                "SELECT id, value FROM test_data WHERE app_id=? AND set_name=? COLLATE NOCASE AND used_by IS NULL "
+                "ORDER BY id LIMIT 1", (app_id, set_name.strip())).fetchone()
+            if row is None:
+                return None
+            self._db.execute("UPDATE test_data SET used_by=?, used_at=? WHERE id=?", (used_by, now_iso(), row["id"]))
+            self._db.commit()
+            return row["value"]
+
+    def get_test_data(self, value_id: int) -> TestDataRow | None:
+        row = self._one("SELECT * FROM test_data WHERE id=?", (value_id,))
+        return None if row is None else TestDataRow.model_validate(dict(row))
+
+    def peek_test_data(self, app_id: int, set_name: str) -> str | None:
+        """Nilai pertama kumpulan (yang tersedia lebih dulu) tanpa menandainya terpakai."""
+        row = self._one("SELECT value FROM test_data WHERE app_id=? AND set_name=? COLLATE NOCASE "
+                        "ORDER BY used_by IS NOT NULL, id LIMIT 1", (app_id, set_name.strip()))
+        return None if row is None else row["value"]
+
+    def release_test_data(self, app_id: int, set_name: str, value: str) -> None:
+        self._exec("UPDATE test_data SET used_by=NULL, used_at=NULL WHERE app_id=? AND set_name=? COLLATE NOCASE "
+                   "AND value=?", (app_id, set_name.strip(), value))
+
+    def reset_test_data(self, value_id: int) -> None:
+        self._exec("UPDATE test_data SET used_by=NULL, used_at=NULL WHERE id=?", (value_id,))
+
+    def delete_test_data(self, value_id: int) -> None:
+        self._exec("DELETE FROM test_data WHERE id=?", (value_id,))
+
+    def delete_test_data_set(self, app_id: int, set_name: str) -> None:
+        self._exec("DELETE FROM test_data WHERE app_id=? AND set_name=? COLLATE NOCASE", (app_id, set_name.strip()))
+
+    # ---------- persiapan HTTP ----------
+    @staticmethod
+    def _hook(row: sqlite3.Row | None) -> HookRow | None:
+        if row is None:
+            return None
+        d = dict(row)
+        d["when"] = d.pop("run_when")
+        d["capture"] = json.loads(d["capture"] or "{}")
+        d["active"] = bool(d["active"])
+        return HookRow.model_validate(d)
+
+    def create_hook(self, *, app_id: int, name: str, when: str = "case", method: str = "POST", url: str,
+                    body: str = "", capture: dict[str, str] | None = None) -> HookRow:
+        cur = self._exec("INSERT INTO hooks (app_id, name, run_when, method, url, body, capture, created_at) "
+                         "VALUES (?,?,?,?,?,?,?,?)",
+                         (app_id, name.strip(), when, method.upper(), url.strip(), body, json.dumps(capture or {}),
+                          now_iso()))
+        return self.get_hook(cur.lastrowid)  # type: ignore[return-value]
+
+    def get_hook(self, hook_id: int) -> HookRow | None:
+        return self._hook(self._one("SELECT * FROM hooks WHERE id=?", (hook_id,)))
+
+    def list_hooks(self, app_id: int, *, when: str | None = None, active_only: bool = False) -> list[HookRow]:
+        sql, params = "SELECT * FROM hooks WHERE app_id=?", [app_id]
+        if when:
+            sql += " AND run_when=?"
+            params.append(when)
+        if active_only:
+            sql += " AND active=1"
+        return [self._hook(r) for r in self._all(sql + " ORDER BY id", tuple(params))]  # type: ignore[misc]
+
+    def update_hook(self, hook_id: int, **fields: Any) -> HookRow:
+        columns = {"name": "name", "when": "run_when", "method": "method", "url": "url", "body": "body",
+                   "capture": "capture", "active": "active"}
+        sets, params = [], []
+        for key, value in fields.items():
+            if key not in columns:
+                raise ValueError(f"Kolom tidak dikenal: {key}")
+            if key == "capture":
+                value = json.dumps(value or {})
+            elif key == "active":
+                value = int(bool(value))
+            elif key == "method":
+                value = str(value).upper()
+            sets.append(f"{columns[key]}=?")
+            params.append(value)
+        if sets:
+            self._exec(f"UPDATE hooks SET {', '.join(sets)} WHERE id=?", (*params, hook_id))
+        hook = self.get_hook(hook_id)
+        if hook is None:
+            raise KeyError(hook_id)
+        return hook
+
+    def delete_hook(self, hook_id: int) -> None:
+        self._exec("DELETE FROM hooks WHERE id=?", (hook_id,))
+
     # ---------- modul kustom (alur bisnis) ----------
     def create_flow(self, *, app_id: int, name: str, steps: str) -> FlowRow:
         now = now_iso()
@@ -490,9 +646,14 @@ class Store:
         return app
 
     def delete_app(self, app_id: int) -> None:
+        """Hapus aplikasi beserta akun, alur, data uji, dan persiapannya. Run harus sudah dihapus lebih dulu."""
         if self._one("SELECT 1 FROM runs WHERE app_id=? LIMIT 1", (app_id,)):
-            raise ValueError("Aplikasi sudah punya riwayat run dan tidak bisa dihapus")
-        self._exec("DELETE FROM apps WHERE id=?", (app_id,))
+            raise ValueError("Aplikasi sudah punya riwayat run. Hapus beserta riwayat run-nya untuk melanjutkan")
+        with self._lock:
+            for table in ("accounts", "flows", "test_data", "hooks"):
+                self._db.execute(f"DELETE FROM {table} WHERE app_id=?", (app_id,))
+            self._db.execute("DELETE FROM apps WHERE id=?", (app_id,))
+            self._db.commit()
 
     # ---------- akun ----------
     def create_account(self, *, app_id: int, role: str, username: str) -> AccountRow:
