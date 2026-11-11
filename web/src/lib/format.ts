@@ -26,9 +26,10 @@ export function formatDateTime(iso: string | null | undefined, now: Date = new D
   return `${d.getDate()} ${MONTHS[d.getMonth()]}, ${hm}`;
 }
 
-export function duration(startIso: string, endIso?: string | null, now: Date = new Date()): string {
+/** `pausedMs`: lama run dijeda, tidak dihitung sebagai waktu berjalan. */
+export function duration(startIso: string, endIso?: string | null, now: Date = new Date(), pausedMs = 0): string {
   const end = endIso ? parse(endIso) : now;
-  const secs = Math.max(0, Math.floor((end.getTime() - parse(startIso).getTime()) / 1000));
+  const secs = Math.max(0, Math.floor((end.getTime() - parse(startIso).getTime() - pausedMs) / 1000));
   const h = Math.floor(secs / 3600);
   const m = Math.floor((secs % 3600) / 60);
   const s = secs % 60;

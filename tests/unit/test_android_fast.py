@@ -1,5 +1,6 @@
 """Jalur cepat Android (uiautomator2): saring jendela sistem, cadangan ke adb biasa bila gagal."""
 from qa_agent.drivers.adb import Adb
+from qa_agent.models import Action
 from qa_agent.drivers.u2fast import strip_system_windows
 
 XML = """<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
@@ -59,6 +60,50 @@ def test_fast_failure_falls_back_to_adb_and_disables_after_repeats():
         assert "adb biasa" in a.dump_ui()  # tetap dapat hasil dari adb biasa
     assert fast.stopped == 3  # UiAutomator uiautomator2 dimatikan agar dump biasa tidak bentrok
     assert not a.fast_active  # setelah gagal berulang: pakai adb biasa
+
+
+def _nav_device(users_has_menu: bool):
+    from qa_agent.drivers.android import AndroidDriver
+    from tests.android_fakes import HOME_XML, FakeAdb, hierarchy
+    from tests.android_fakes import node as n
+
+    reports = hierarchy(n("android.widget.TextView", text="Daftar Laporan", bounds="[0,100][1080,200]", clickable=False))
+    users_nodes = [n("android.widget.TextView", text="Daftar Pengguna", bounds="[0,100][1080,200]", clickable=False),
+                   n("android.widget.ImageButton", desc="Tambah pengguna", rid="com.demo.app:id/fab",
+                     bounds="[900,2100][1040,2240]")]
+    if users_has_menu:  # menu samping yang tampil di semua layar
+        users_nodes.append(n("android.widget.TextView", text="Laporan", rid="com.demo.app:id/menu_reports",
+                             bounds="[0,1500][1080,1600]"))
+    adb = FakeAdb({"HOME": HOME_XML, "USERS": hierarchy(*users_nodes), "REPORTS": reports}, "HOME", {
+        ("HOME", (0, 300, 1080, 420)): "USERS", ("HOME", (0, 440, 1080, 560)): "REPORTS",
+        ("USERS", (0, 1500, 1080, 1600)): "REPORTS"})
+    d = AndroidDriver(adb, "com.demo.app", sleep=lambda s: None)
+    d.start()
+    d.new_session(None)
+    home = d.observe()
+    d.execute(Action(action="click", element=3), next(e for e in home.elements if e.name == "Laporan"))
+    reports_loc = d.observe().location
+    d.execute(Action(action="back"), None)
+    home = d.observe()
+    d.execute(Action(action="click", element=2), next(e for e in home.elements if e.name == "Pengguna"))
+    d.observe()
+    adb.calls.clear()
+    return d, adb, reports_loc
+
+
+def test_goto_other_menu_via_back_without_reopening_app():
+    d, adb, reports_loc = _nav_device(users_has_menu=False)
+    d.goto(reports_loc)
+    assert d.current_url == reports_loc
+    assert not any(c[0] in ("force_stop", "launch") for c in adb.calls)  # aplikasi tidak ditutup-buka
+    assert ("key", 4) in adb.calls  # cukup tombol Back lalu tap menu
+
+
+def test_goto_uses_menu_visible_on_current_screen():
+    d, adb, reports_loc = _nav_device(users_has_menu=True)
+    d.goto(reports_loc)
+    assert d.current_url == reports_loc
+    assert not any(c[0] in ("force_stop", "launch", "key") for c in adb.calls)  # langsung tap menu samping
 
 
 def test_focus_and_pid_single_command():

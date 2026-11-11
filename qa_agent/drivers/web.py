@@ -236,6 +236,20 @@ class WebDriver:
         except Exception:
             pass  # penonton bermasalah tidak boleh menghentikan run
 
+    def session_alive(self) -> bool:
+        """Halaman aplikasi masih terbuka (boleh dipakai lagi tanpa membuat sesi browser baru)."""
+        if self._page is None or self._context is None:
+            return False
+        try:
+            if self._page.is_closed():
+                return False
+            return _origin(self._page.url) == _origin(self.base_url)
+        except Exception:  # noqa: BLE001
+            return False
+
+    def reset_signals(self) -> None:
+        self._signals, self._seen_errors, self._seen_pending = [], [], []
+
     def save_auth_state(self, path: Path) -> None:
         path = Path(path)
         path.parent.mkdir(parents=True, exist_ok=True)

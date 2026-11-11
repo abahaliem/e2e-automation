@@ -323,6 +323,9 @@ export interface Snapshot {
   screens: number;
   /** Seluruh aplikasi: agent bertanya lanjutkan memetakan atau selesai */
   asking?: { screens: number; modules: number; new_screens?: number } | null;
+  /** Total lama dijeda (detik) dan awal jeda yang sedang berlangsung (epoch ms). */
+  paused_seconds?: number;
+  paused_since?: number | null;
 }
 
 export type RunEvent = { type: string; seq?: number; [key: string]: unknown };

@@ -122,6 +122,19 @@ class AndroidDriver:
         self._sleep(max(self.settle_seconds, 1.5))
         self._wait_ready()
 
+    def reset_signals(self) -> None:
+        self._transient, self._transient_shots = [], {}
+
+    def session_alive(self) -> bool:
+        """Aplikasi masih berjalan dan tampil di depan (boleh dipakai lagi tanpa dibuka ulang)."""
+        if not self._alive:
+            return False
+        try:
+            package, _ = self.adb.current_activity()
+            return package == self.package and bool(self.adb.pidof(self.package))
+        except Exception:  # noqa: BLE001
+            return False
+
     def _wait_ready(self, polls: int = 24, interval: float = 0.5) -> None:
         """Tunggu splash/loading selesai: layar punya elemen dan sama pada dua pembacaan berturut-turut (maks ~12 detik)."""
         previous = None
@@ -358,13 +371,9 @@ class AndroidDriver:
         target = self._paths.get(location)
         if target is None:
             raise RuntimeError(f"Layar {location} tidak bisa dicapai (jalur belum tercatat)")
-        here = self._paths.get(current)
-        if here is not None and len(here) > len(target) and here[: len(target)] == target and len(here) - len(target) <= 2:
-            for _ in range(len(here) - len(target)):
-                self.adb.keyevent(KEY_BACK)
-                self._sleep(self.settle_seconds)
-            if self.current_url == location:
-                return
+        # Pindah menu langsung di dalam aplikasi; tutup-buka ulang aplikasi hanya cadangan terakhir
+        if self._navigate_in_app(location, target):
+            return
         self.new_session(None)
         i = 0
         while i < len(target):
@@ -398,6 +407,56 @@ class AndroidDriver:
                     "pada kondisi tertentu (mis. popup/form yang muncul otomatis), jadi test case tidak bisa dijalankan sekarang"
                     f" ({location}, yang tampil {reached})")
             raise RuntimeError(f"Layar {location} tidak bisa dicapai (tiba di {reached})")
+
+    MAX_BACKS = 4  # tombol Back paling banyak sekian kali sebelum menyerah dan membuka ulang aplikasi
+
+    def _navigate_in_app(self, location: str, target: list[dict]) -> bool:
+        """Menuju `location` tanpa menutup aplikasi.
+
+        Dari layar sekarang (lalu setelah tiap tombol Back): cari langkah paling jauh di jalur tujuan yang tombolnya
+        sudah terlihat (mis. menu samping / tab bawah yang ada di semua layar), lalu lanjutkan dari situ. False bila
+        tidak berhasil; pemanggil lalu membuka ulang aplikasi seperti biasa."""
+        previous = None
+        for backs in range(self.MAX_BACKS + 1):
+            if backs:
+                self.adb.keyevent(KEY_BACK)
+                self._settle_screen()
+                package, _ = self.adb.current_activity()
+                if package and package != self.package:
+                    return False  # Back terakhir keluar dari aplikasi
+            elements = self._dump()
+            if not elements or self._is_login(elements):
+                return False
+            here = self._locate(elements)
+            if here == location:
+                return True
+            if here == previous:
+                return False  # Back tidak mengubah layar
+            previous = here
+            visible = [i for i, step in enumerate(target)
+                       if step.get("key") != "back" and self._find_step(step, elements) is not None]
+            if visible and self._replay_from(target, visible[-1], elements) and self.current_url == location:
+                self._path_here = list(target)
+                return True
+            if visible:
+                return False  # sudah dicoba tapi tiba di layar lain: buka ulang aplikasi agar pasti
+        return False
+
+    def _replay_from(self, target: list[dict], start: int, elements: list[Element]) -> bool:
+        """Tap langkah jalur mulai indeks `start` dari layar sekarang. False bila ada tombol yang tidak ditemukan."""
+        for i in range(start, len(target)):
+            step = target[i]
+            if step.get("key") == "back":
+                self.adb.keyevent(KEY_BACK)
+            else:
+                if i > start:
+                    elements = self._dump()
+                el = self._find_step(step, elements)
+                if el is None:
+                    return False
+                self.adb.tap(*_center(el))
+            self._settle_screen()
+        return True
 
     @staticmethod
     def _find_step(step: dict, elements: list[Element]) -> Element | None:

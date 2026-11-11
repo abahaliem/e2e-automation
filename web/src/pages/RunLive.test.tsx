@@ -72,6 +72,17 @@ describe("Run berjalan", () => {
     expect(screen.getByRole("img", { name: /Bukti error/ })).toHaveAttribute("src", expect.stringContaining("TC-PEN-002_step-02_error-1.png"));
   });
 
+  it("penghitung waktu tidak berjalan selama dijeda", async () => {
+    const now = Date.now();
+    // run mulai 10 menit lalu, 3 menit dijeda sebelumnya, dan sedang dijeda sejak 2 menit lalu → 05:00
+    const started = new Date(now - 10 * 60_000);
+    const iso = `${started.getFullYear()}-${String(started.getMonth() + 1).padStart(2, "0")}-${String(started.getDate()).padStart(2, "0")}T${started.toTimeString().slice(0, 8)}`;
+    mocked.getRun.mockResolvedValue({ ...run, started_at: iso } as never);
+    setStream(snapshot({ control_state: "paused", paused_seconds: 180, paused_since: now - 120_000 }));
+    renderWithProviders(<RunLivePage />, { path: "/runs/9", route: "/runs/:runId" });
+    expect(await screen.findByText(/^05:0[01]$/)).toBeInTheDocument();
+  });
+
   it("Jeda memanggil kontrol", async () => {
     setStream(snapshot());
     renderWithProviders(<RunLivePage />, { path: "/runs/9", route: "/runs/:runId" });

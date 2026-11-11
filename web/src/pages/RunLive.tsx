@@ -101,6 +101,9 @@ export function RunLivePage() {
   const [error, setError] = useState<string | null>(null);
   const [confirmedKey, setConfirmedKey] = useState<string | null>(null);
   const now = useNow();
+  // Waktu saat dijeda tidak dihitung: penghitung berhenti selama Jeda dan lanjut dari angka yang sama
+  const pausedMs =
+    (snapshot?.paused_seconds ?? 0) * 1000 + (snapshot?.paused_since ? Math.max(0, now.getTime() - snapshot.paused_since) : 0);
 
   const status = snapshot?.status ?? run.data?.status;
   const control = snapshot?.control_state ?? null;
@@ -175,7 +178,11 @@ export function RunLivePage() {
           {pill.label}
         </span>
         <div className="flex items-center gap-4 text-sm text-fg-muted">
-          {r && <span className="font-mono">{duration(r.started_at, active ? null : r.finished_at, now)}</span>}
+          {r && (
+            <span className="font-mono" title={pausedMs > 0 ? "Waktu saat dijeda tidak dihitung" : undefined}>
+              {duration(r.started_at, active ? null : r.finished_at, now, active ? pausedMs : 0)}
+            </span>
+          )}
           <span>{progress}</span>
           {!connected && <span className="text-xs text-review">Menyambung ulang...</span>}
         </div>
