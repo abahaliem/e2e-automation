@@ -18,7 +18,7 @@ from PIL import Image
 
 from qa_agent import imaging
 from qa_agent.drivers.adb import AdbError
-from qa_agent.drivers.android_dom import parse_ui, screen_key
+from qa_agent.drivers.android_dom import parse_ui, screen_key, screen_parts, similarity
 from qa_agent.drivers.base import DriverCrashed, missing_credential
 from qa_agent.evidence import now_iso
 from qa_agent.models import Action, ActionResult, Element, Observation, Signal
@@ -36,6 +36,7 @@ _ERROR_TEXT = re.compile(
     r"|ditolak|tidak valid|salah",
     re.IGNORECASE)
 AI_IMAGE_WIDTH = 720
+_SELECTOR_BOUNDS = re.compile(r"^([\w.$]+):.*:(\[\d+,\d+\]\[\d+,\d+\])$")
 FRESH_DUMP_SECONDS = 0.6  # bacaan layar dari _settle_screen() masih boleh dipakai observe() selama ini
 FRAME_WIDTH = 720
 
@@ -73,6 +74,7 @@ class AndroidDriver:
         self._fresh: tuple[list[Element], float] | None = None  # bacaan layar terakhir saat menunggu stabil
         self._pid_now: tuple[str | None] | None = None
         self.settle_max = 1.5  # jalur cepat: tunggu layar stabil paling lama sekian detik
+        self._parts: dict[str, set[str]] = {}  # lokasi → penanda elemen (untuk mengenali layar berisi dinamis)
         self.frame_workers = 2  # screencap HP lambat (~0,3-0,8 dtk): dua pengambil bergantian supaya live lebih mulus
         self.blocked_requests: list[str] = []
         self._size = (1080, 1920)
@@ -137,11 +139,17 @@ class AndroidDriver:
 
     def _wait_ready(self, polls: int = 24, interval: float = 0.5) -> None:
         """Tunggu splash/loading selesai: layar punya elemen dan sama pada dua pembacaan berturut-turut (maks ~12 detik)."""
-        previous = None
-        for _ in range(polls):
+        # Jalur cepat membaca layar dalam ~0,2 detik, sehingga splash/loading yang diam sesaat bisa terbaca sama dua
+        # kali. Karena itu di jalur cepat: harus sama 3x berturut-turut dan sudah ada tombol/elemen interaktif
+        # (kecuali sudah menunggu lama).
+        need = 3 if self._fast else 2
+        previous, same = None, 0
+        for n in range(polls):
             elements = self._dump()
             key = screen_key(elements) if elements else None
-            if key is not None and key == previous:
+            same = same + 1 if key is not None and key == previous else 1
+            ready = not self._fast or bool(screen_parts(elements)) or n >= polls // 2
+            if key is not None and same >= need and ready:
                 return
             previous = key
             self._sleep(interval)
@@ -223,8 +231,21 @@ class AndroidDriver:
         package = package or self.package
         short = activity.rsplit(".", 1)[-1] if activity else "Layar"
         location = f"android://{package}/{short}#{screen_key(elements)}"
+        self._parts.setdefault(location, screen_parts(elements))
         self._record(location)
         return location
+
+    SAME_SCREEN = 0.6  # kemiripan minimal agar layar dengan isi dinamis tetap dianggap layar yang sama
+
+    def _arrived(self, location: str, elements: list[Element]) -> bool:
+        """Sudah di layar `location`? Persis sama, atau activity sama dan tombol-tombolnya sebagian besar sama."""
+        here = self._locate(elements)
+        if here == location:
+            return True
+        known = self._parts.get(location)
+        if known is None or here.split("#", 1)[0] != location.split("#", 1)[0]:
+            return False
+        return similarity(screen_parts(elements), known) >= self.SAME_SCREEN
 
     def _record(self, location: str) -> None:
         """Catat jalur ke layar baru berdasarkan tap terakhir yang membuatnya berpindah."""
@@ -365,8 +386,7 @@ class AndroidDriver:
         if self._start_location(location):
             self.new_session(None)
             return
-        current = self.current_url
-        if current == location:
+        if self._arrived(location, self._dump()):
             return
         target = self._paths.get(location)
         if target is None:
@@ -390,7 +410,7 @@ class AndroidDriver:
                 # Langkah yang tidak ada di layar dilewati (mis. tombol login saat aplikasi sudah login).
                 j = next((k for k in range(i + 1, len(target)) if self._find_step(target[k], elements)), None)
                 if j is None:
-                    if self._locate(elements) == location:
+                    if self._arrived(location, elements):
                         return  # sudah tiba (langkah sisa tidak diperlukan, mis. tombol login)
                     raise RuntimeError(f"Layar {location} tidak bisa dicapai: '{target[i].get('name')}' tidak ditemukan")
                 i, el = j, self._find_step(target[j], elements)
@@ -399,8 +419,8 @@ class AndroidDriver:
             i += 1
         self._path_here = list(target)
         elements = self._dump()
-        reached = self._locate(elements)
-        if reached != location and not self._is_login(elements):
+        if not self._arrived(location, elements) and not self._is_login(elements):
+            reached = self._location
             if not target:
                 raise RuntimeError(
                     "Layar awal test case ini tidak tampil saat aplikasi dibuka. Layar tersebut kemungkinan hanya muncul "
@@ -427,15 +447,15 @@ class AndroidDriver:
             elements = self._dump()
             if not elements or self._is_login(elements):
                 return False
-            here = self._locate(elements)
-            if here == location:
+            if self._arrived(location, elements):
                 return True
+            here = self._location
             if here == previous:
                 return False  # Back tidak mengubah layar
             previous = here
             visible = [i for i, step in enumerate(target)
                        if step.get("key") != "back" and self._find_step(step, elements) is not None]
-            if visible and self._replay_from(target, visible[-1], elements) and self.current_url == location:
+            if visible and self._replay_from(target, visible[-1], elements) and self._arrived(location, self._dump()):
                 self._path_here = list(target)
                 return True
             if visible:
@@ -460,9 +480,19 @@ class AndroidDriver:
 
     @staticmethod
     def _find_step(step: dict, elements: list[Element]) -> Element | None:
-        return next((e for e in elements if step.get("selector") and e.selector == step["selector"]
-                     and e.name == step.get("name")), None) or \
+        found = next((e for e in elements if step.get("selector") and e.selector == step["selector"]
+                      and e.name == step.get("name")), None) or \
             next((e for e in elements if e.role == step.get("role") and e.name == step.get("name")), None)
+        if found is not None:
+            return found
+        # Nama bisa berganti bahasa (mis. "Open navigation menu" ↔ "Buka menu navigasi") atau berubah isi:
+        # cocokkan jenis elemen + posisi persis di layar (tercatat di selector "kelas:nama:[x1,y1][x2,y2]").
+        match = _SELECTOR_BOUNDS.match(step.get("selector") or "")
+        if match is None:
+            return None
+        cls, bounds = match.groups()
+        return next((e for e in elements if e.role == step.get("role")
+                     and e.selector.startswith(f"{cls}:") and e.selector.endswith(f":{bounds}")), None)
 
     def _is_login(self, elements: list[Element]) -> bool:
         return Observation(location=self._location or f"android://{self.package}/", elements=elements).is_login_screen

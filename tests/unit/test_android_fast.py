@@ -106,6 +106,31 @@ def test_goto_uses_menu_visible_on_current_screen():
     assert not any(c[0] in ("force_stop", "launch", "key") for c in adb.calls)  # langsung tap menu samping
 
 
+def test_find_step_survives_language_change():
+    """Tombol ☰ tercatat 'Open navigation menu', setelah aplikasi dibuka ulang bernama 'Buka menu navigasi'."""
+    from qa_agent.drivers.android import AndroidDriver
+    from qa_agent.models import Element
+
+    step = {"role": "button", "name": "Open navigation menu",
+            "selector": "android.widget.ImageButton:Open navigation menu:[0,63][147,210]"}
+    now = [Element(index=1, role="button", name="Buka menu navigasi",
+                   selector="android.widget.ImageButton:Buka menu navigasi:[0,63][147,210]"),
+           Element(index=2, role="button", name="Installation", selector="android.widget.Button:Installation:[0,300][540,400]")]
+    assert AndroidDriver._find_step(step, now) is now[0]
+    moved = [Element(index=1, role="button", name="Lain", selector="android.widget.ImageButton:Lain:[900,63][1040,210]")]
+    assert AndroidDriver._find_step(step, moved) is None  # posisi berbeda: bukan tombol yang sama
+
+
+def test_arrived_tolerates_dynamic_list_items():
+    from qa_agent.drivers.android_dom import similarity
+
+    before = {"button:buka menu navigasi", "button:installation", "button:troubleshoot", "button:addon",
+              "button:change package", "button:wo id : 000090014541"}
+    after = (before - {"button:wo id : 000090014541"}) | {"button:wo id : 000090099999"}
+    assert similarity(before, after) >= 0.6  # isi daftar berubah, layarnya tetap sama
+    assert similarity(before, {"button:simpan", "textbox:catatan"}) < 0.6
+
+
 def test_focus_and_pid_single_command():
     out = (b"  mCurrentFocus=Window{5da u0 com.biznet.wfm.dev/.MainActivity}\n@@QA@@\n4321\n")
     a = Adb(serial="X", adb_path="adb", run=lambda args, t: (0, out, b""))

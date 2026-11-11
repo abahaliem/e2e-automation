@@ -115,8 +115,19 @@ def parse_ui(xml: str, max_elements: int = 80, screen: tuple[int, int] | None = 
     return elements
 
 
+def screen_parts(elements: list[Element]) -> set[str]:
+    """Penanda elemen interaktif sebuah layar (dasar screen_key dan pembanding kemiripan layar)."""
+    return {f"{e.role}:{e.selector if ':id/' in e.selector else e.name.lower()}" for e in elements
+            if e.role in INTERACTIVE}
+
+
 def screen_key(elements: list[Element]) -> str:
     """Identitas layar dari struktur elemen interaktif (teks dinamis seperti jam diabaikan)."""
-    parts = sorted({f"{e.role}:{e.selector if ':id/' in e.selector else e.name.lower()}" for e in elements
-                    if e.role in INTERACTIVE})
-    return hashlib.sha1("\n".join(parts).encode("utf-8")).hexdigest()[:8]
+    return hashlib.sha1("\n".join(sorted(screen_parts(elements))).encode("utf-8")).hexdigest()[:8]
+
+
+def similarity(a: set[str], b: set[str]) -> float:
+    """Kemiripan dua layar (Jaccard). Layar daftar yang isinya berubah (nomor order, jam) tetap mirip."""
+    if not a and not b:
+        return 1.0
+    return len(a & b) / len(a | b)
