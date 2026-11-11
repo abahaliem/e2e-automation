@@ -50,11 +50,29 @@ def _element_dict(element: Element | None) -> dict[str, str] | None:
     return {"role": element.role, "name": element.name, "selector": element.selector}
 
 
-def describe_manual(event: dict, masker: Masker) -> str:
+def element_at(obs: Observation, event: dict, size: dict | None) -> Element | None:
+    """Elemen terkecil di observasi yang memuat titik klik QA (koordinat 0..1 → piksel)."""
+    if not size or not size.get("width") or not size.get("height"):
+        return None
+    try:
+        px = float(event.get("x", 0)) * size["width"]
+        py = float(event.get("y", 0)) * size["height"]
+    except (TypeError, ValueError):
+        return None
+    hits = [e for e in obs.elements
+            if e.bbox[2] > 0 and e.bbox[3] > 0
+            and e.bbox[0] <= px <= e.bbox[0] + e.bbox[2] and e.bbox[1] <= py <= e.bbox[1] + e.bbox[3]]
+    return min(hits, key=lambda e: e.bbox[2] * e.bbox[3]) if hits else None
+
+
+def describe_manual(event: dict, masker: Masker, target: Element | None = None) -> str:
     """Deskripsi singkat input manual QA; teks yang diketik selalu disamarkan."""
     kind = event.get("kind")
     if kind == "click":
-        return f"Klik di ({float(event.get('x', 0)):.2f}, {float(event.get('y', 0)):.2f})"
+        if target is not None and (target.name or "").strip():
+            name = " ".join(target.name.split())[:60]
+            return f"Klik '{masker.mask(name)}'"
+        return f"Klik di area ({float(event.get('x', 0)):.2f}, {float(event.get('y', 0)):.2f}) tanpa nama elemen"
     if kind == "type":
         text = str(event.get("text", ""))
         return f"Ketik {len(text)} karakter" if text else "Ketik (kosong)"
@@ -311,7 +329,14 @@ class AgentLoop:
 
     def _manual(self, tc_id: str, step_no: int, obs: Observation, event: dict) -> str:
         """Jalankan satu input manual QA (tanpa Guard kata kunci; filter jaringan tetap aktif)."""
-        description = describe_manual(event, self.masker)
+        target = None
+        if event.get("kind") == "click":
+            size_fn = getattr(self.driver, "viewport_size", None)
+            try:
+                target = element_at(obs, event, size_fn() if size_fn else None)
+            except Exception:  # noqa: BLE001 - nama elemen hanya untuk keterangan
+                target = None
+        description = describe_manual(event, self.masker, target)
         manual = getattr(self.driver, "manual_input", None)
         if manual is None:
             result_text = "error: driver tidak mendukung input manual"
@@ -320,6 +345,14 @@ class AgentLoop:
             if result.fatal:
                 raise DriverCrashed(result.error or "Browser tertutup")
             result_text = "ok" if result.ok else f"error: {result.error}"
+            if result.ok and event.get("kind") in ("click", "key"):
+                # QA perlu tahu apakah kliknya berpengaruh: bandingkan layar sebelum & sesudah
+                try:
+                    after = self.driver.observe()
+                    changed = after.fingerprint != obs.fingerprint or after.location != obs.location
+                    description += " → layar berubah" if changed else " → tidak ada perubahan di layar"
+                except Exception:  # noqa: BLE001
+                    pass
             trace = getattr(self, "_trace", None)
             if result.ok and trace is not None:
                 trace["steps"].append({"manual": dict(event)})

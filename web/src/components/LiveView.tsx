@@ -1,5 +1,5 @@
 ﻿import { MonitorPlay } from "@phosphor-icons/react";
-import type { CSSProperties, MouseEvent, WheelEvent } from "react";
+import { useRef, useState, type CSSProperties, type MouseEvent, type WheelEvent } from "react";
 import { cn } from "@/lib/cn";
 import type { Frame, ManualEvent } from "@/lib/types";
 
@@ -54,10 +54,18 @@ export function LiveView({
   const sizing: CSSProperties = portrait
     ? { aspectRatio: ratio, height: "min(68vh, 860px)", width: "auto", maxWidth: "100%" }
     : { aspectRatio: ratio };
+  // Tanda di titik klik QA saat Ambil alih, supaya jelas bagian mana yang dikirim
+  const [marks, setMarks] = useState<{ id: number; x: number; y: number; n: number }[]>([]);
+  const counter = useRef(0);
   const handleClick = (e: MouseEvent<HTMLDivElement>) => {
     if (!takeover) return;
     const { x, y } = toNormalized(e.clientX, e.clientY, e.currentTarget.getBoundingClientRect());
     onInput({ kind: "click", x, y });
+    const id = Date.now() + Math.random();
+    counter.current += 1;
+    const n = counter.current;
+    setMarks((m) => [...m.slice(-4), { id, x, y, n }]);
+    window.setTimeout(() => setMarks((m) => m.filter((k) => k.id !== id)), 3000);
   };
   const handleWheel = (e: WheelEvent<HTMLDivElement>) => {
     if (!takeover) return;
@@ -86,6 +94,21 @@ export function LiveView({
           </div>
         </div>
       )}
+      {takeover &&
+        marks.map((m, i) => (
+          <div
+            key={m.id}
+            data-testid="click-mark"
+            className={cn("pointer-events-none absolute -translate-x-1/2 -translate-y-1/2", i < marks.length - 1 && "opacity-40")}
+            style={{ left: pct(m.x), top: pct(m.y) }}
+          >
+            <span className="absolute -left-4 -top-4 h-8 w-8 animate-ping rounded-full bg-accent/40" />
+            <span className="absolute -left-3 -top-3 h-6 w-6 rounded-full border-2 border-accent bg-accent/25 shadow-[0_0_0_3px_rgba(255,255,255,0.8)]" />
+            <span className="absolute left-4 -top-7 whitespace-nowrap rounded bg-accent px-1.5 py-0.5 text-[11px] font-medium text-white shadow">
+              Klik #{m.n}
+            </span>
+          </div>
+        ))}
       {overlay && !takeover && (
         <div
           data-testid="live-overlay"
