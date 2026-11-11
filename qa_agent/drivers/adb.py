@@ -76,10 +76,43 @@ def escape_text(value: str) -> str:
 
 
 class Adb:
-    def __init__(self, serial: str | None = None, adb_path: str | None = None, run: Runner | None = None) -> None:
+    def __init__(self, serial: str | None = None, adb_path: str | None = None, run: Runner | None = None,
+                 fast: bool = False) -> None:
+        """`fast`: baca layar & screenshot lewat uiautomator2 (jauh lebih cepat); otomatis kembali ke adb biasa
+        bila tidak tersedia atau gagal berulang."""
         self.serial = serial
         self.adb_path = adb_path or find_adb() or "adb"
         self._run = run or _default_run
+        self._fast = None
+        if fast:
+            from qa_agent.drivers import u2fast
+
+            if u2fast.enabled():
+                self._fast = u2fast.FastDevice(serial, self.adb_path)
+
+    FAST_MAX_FAILURES = 3
+
+    def _fast_call(self, name: str):
+        """Jalankan operasi jalur cepat; None bila tidak aktif / gagal (pemanggil memakai adb biasa)."""
+        fast = self._fast
+        if fast is None:
+            return None
+        try:
+            result = getattr(fast, name)()
+            fast.failures = 0
+            return result
+        except Exception:  # noqa: BLE001 - jalur cepat hanya pelengkap
+            fast.failures += 1
+            # UiAutomator milik uiautomator2 dimatikan dulu: kalau masih hidup, `uiautomator dump` biasa ikut gagal.
+            # Panggilan cepat berikutnya menyalakannya lagi.
+            fast.stop()
+            if fast.failures >= self.FAST_MAX_FAILURES:
+                self._fast = None  # pakai adb biasa sampai sesi berikutnya
+            return None
+
+    @property
+    def fast_active(self) -> bool:
+        return self._fast is not None
 
     # ---------- dasar ----------
     def _base(self) -> list[str]:
@@ -198,6 +231,16 @@ class Adb:
             activity = package + activity
         return package, activity
 
+    def focus_and_pid(self, package: str) -> tuple[str, str, str | None]:
+        """Activity yang tampil + PID aplikasi dalam satu perintah adb (hemat ~0,3 detik per langkah)."""
+        out = self.shell(f"dumpsys window | grep mCurrentFocus; echo @@QA@@; pidof {package}; true")
+        focus, _, pid = out.partition("@@QA@@")
+        match = re.search(r"mCurrentFocus=Window\{\S+ \S+ ([^/\s}]+)/([^\s}]+)\}", focus)
+        pkg, activity = (match.group(1), match.group(2)) if match else ("", "")
+        if activity.startswith("."):
+            activity = pkg + activity
+        return pkg, activity, pid.strip() or None
+
     def pidof(self, package: str) -> str | None:
         try:
             out = self.shell(f"pidof {package}").strip()
@@ -224,6 +267,9 @@ class Adb:
 
     # ---------- layar ----------
     def screencap(self) -> bytes:
+        fast = self._fast_call("screenshot_png")
+        if fast:
+            return fast
         data = self.exec_out("screencap -p")
         if not data.startswith(PNG_MAGIC):
             # Beberapa perangkat lama mengubah \n menjadi \r\n
@@ -234,6 +280,9 @@ class Adb:
         return data
 
     def dump_ui(self) -> str:
+        fast = self._fast_call("dump")
+        if fast and "<hierarchy" in fast:
+            return fast
         out = self.shell(f"uiautomator dump {UI_DUMP_PATH}", timeout=40)
         if "ERROR" in out or "dumped" not in out.lower():
             raise AdbError(f"Gagal membaca elemen layar: {out.strip()[:200]}")

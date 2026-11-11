@@ -23,6 +23,10 @@ TRACKED_RESOURCES = {"document", "xhr", "fetch"}
 BENIGN_JS_ERRORS = ("ResizeObserver loop",)
 _FATAL_MARKERS = ("has been closed", "Target closed", "Browser closed")
 SCREENCAST_FPS = 6
+SETTLE_MAX_MS = 3000  # batas menunggu halaman tenang setelah aksi
+QUIET_SECONDS = 0.3  # cukup tenang selama ini tanpa request baru
+LONG_REQUEST = 1.5  # request yang terbuka lebih lama dari ini dianggap polling/stream, tidak ditunggu
+POLL_HITS, POLL_WINDOW = 3, 5.0  # endpoint dipanggil >= 3x dalam 5 detik = polling
 SCREENCAST_MAX_WIDTH = 1280
 SCREENCAST_QUALITY = 60
 
@@ -86,6 +90,9 @@ class WebDriver:
         self._seen_errors: list[tuple[str, bytes, str]] = []
         self._seen_pending: list[tuple[str, str]] = []  # (teks, waktu) menunggu difoto
         self._seen_since = 0.0
+        self._inflight: dict[int, float] = {}  # request yang sedang berjalan → waktu mulai
+        self._net_at = 0.0  # waktu aktivitas jaringan terakhir
+        self._hits: dict[str, list[float]] = {}  # endpoint → waktu panggilan terakhir (deteksi polling)
         self._credentials: dict[str, str] = {}
         # layar live (CDP screencast)
         self._frame_sink: Callable[[bytes, dict], None] | None = None
@@ -138,6 +145,12 @@ class WebDriver:
         page.on("console", self._on_console)
         page.on("pageerror", self._on_page_error)
         page.on("response", self._on_response)
+        page.on("request", self._on_request)
+        page.on("requestfinished", self._on_request_done)
+        page.on("requestfailed", self._on_request_done)
+        self._inflight = {}
+        self._hits = {}
+        self._net_at = 0.0
         self._page = page
         self._signals = []
         self._seen_errors = []
@@ -306,13 +319,45 @@ class WebDriver:
         self._settle()
 
     def _settle(self) -> None:
+        """Tunggu halaman tenang setelah aksi, tanpa terjebak polling.
+
+        `networkidle` bawaan Playwright butuh 0,5 detik tanpa request sama sekali; dashboard yang terus polling
+        (statistik live, debugbar, websocket fallback) tidak pernah idle sehingga setiap langkah selalu menunggu
+        penuh 3 detik, dua kali per langkah. Di sini yang ditunggu hanya request yang baru dimulai (< LONG_REQUEST
+        detik); request yang terbuka lama (long-polling, stream) diabaikan, dan cukup tenang QUIET_SECONDS."""
         try:
-            self.page.wait_for_load_state("networkidle", timeout=3000)
+            self.page.wait_for_load_state("domcontentloaded", timeout=SETTLE_MAX_MS)
+            begin = time.monotonic()
+            deadline = begin + SETTLE_MAX_MS / 1000
+            while True:
+                now = time.monotonic()
+                busy = any(now - started < LONG_REQUEST for started in self._inflight.values())
+                # "tenang" dihitung sejak mulai menunggu: request yang dipicu aksi sesaat kemudian tetap ditunggu
+                if (not busy and now - max(self._net_at, begin) >= QUIET_SECONDS) or now >= deadline:
+                    break
+                self.page.wait_for_timeout(50)
         except PlaywrightTimeout:
             pass
         except PlaywrightError as e:
             if _is_fatal(e):
                 raise DriverCrashed(_first_line(e)) from e
+
+    def _on_request(self, request: Any) -> None:
+        if request.resource_type in ("websocket", "eventsource", "media"):
+            return
+        now = time.monotonic()
+        # Endpoint yang dipanggil berulang-ulang = polling (statistik live, notifikasi): tidak ditunggu
+        key = f"{request.method} {urlsplit(request.url).path}"
+        hits = [t for t in self._hits.get(key, []) if now - t < POLL_WINDOW] + [now]
+        self._hits[key] = hits[-5:]
+        if len(hits) >= POLL_HITS:
+            return
+        self._inflight[id(request)] = now
+        self._net_at = now
+
+    def _on_request_done(self, request: Any) -> None:
+        if self._inflight.pop(id(request), None) is not None:
+            self._net_at = time.monotonic()
 
     def _scan_frames(self) -> list[tuple[Any, tuple[float, float]]]:
         main = self.page.main_frame
