@@ -190,6 +190,7 @@ export const api = {
   runState: (id: number) => get<Snapshot>(`/api/runs/${id}/state`),
   control: (id: number, body: ControlInput) => post<{ state: ControlState }>(`/api/runs/${id}/control`, body),
   resumeRun: (id: number) => post<Run>(`/api/runs/${id}/resume`),
+  acceptMap: (id: number) => post<Run>(`/api/runs/${id}/accept-map`),
   deleteRun: (id: number) => del(`/api/runs/${id}`),
   runMap: (id: number) => get<RunMap>(`/api/runs/${id}/map`),
   getPlan: (id: number) => get<PlanResponse>(`/api/runs/${id}/plan`),

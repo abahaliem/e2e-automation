@@ -221,6 +221,31 @@ def put_plan(run_id: int, body: PlanIn, request: Request) -> dict:
     return _plan_out(request, run_id)
 
 
+@router.post("/runs/{run_id}/accept-map")
+def accept_map(run_id: int, request: Request) -> dict:
+    """Pemetaan (Seluruh aplikasi) yang terhenti dipakai apa adanya: status jadi Selesai, sehingga modul dan alur
+    bisnis bisa diuji tanpa mengulang pemetaan dari awal."""
+    from pathlib import Path
+
+    from qa_agent.agent.control import InterventionError
+    from qa_agent.evidence import RunStore, now_iso
+
+    row = deps.get_run_or_404(request, run_id)
+    if row.mode != "explore":
+        raise ValueError("Hanya hasil Seluruh aplikasi (pemetaan) yang bisa dipakai")
+    if deps.manager(request).is_active(run_id):
+        raise InterventionError("Run masih berjalan. Klik Selesai di layar run, atau tunggu sampai berhenti")
+    if row.status == "completed":
+        return run_out(request, row)
+    app_map = RunStore(Path(row.folder)).read_app_map()
+    if app_map is None or not app_map.screens:
+        raise ValueError("Belum ada layar yang dipetakan di run ini. Jalankan Seluruh aplikasi lagi")
+    note = f"Hasil pemetaan sebagian dipakai ({len(app_map.screens)} layar); run sebelumnya: {row.note or row.status}"
+    updated = deps.store(request).update_run(run_id, status="completed", note=note,
+                                             finished_at=row.finished_at or now_iso())
+    return run_out(request, updated)
+
+
 @router.post("/runs/{run_id}/resume")
 def resume_run(run_id: int, request: Request) -> dict:
     deps.get_run_or_404(request, run_id)

@@ -1,8 +1,8 @@
-import { LockSimpleOpen, MagnifyingGlassPlus, Target, X } from "@phosphor-icons/react";
-import { useQuery } from "@tanstack/react-query";
+import { CheckCircle, LockSimpleOpen, MagnifyingGlassPlus, Target, X } from "@phosphor-icons/react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { Card, EmptyState, Skeleton } from "@/components/ui";
+import { Alert, Button, Card, EmptyState, Skeleton } from "@/components/ui";
 import { api } from "@/lib/api";
 import type { MapScreen, Run } from "@/lib/types";
 
@@ -10,6 +10,16 @@ import type { MapScreen, Run } from "@/lib/types";
 export function AppMapView({ run }: { run: Run }) {
   const map = useQuery({ queryKey: ["run-map", run.id], queryFn: () => api.runMap(run.id) });
   const [open, setOpen] = useState<{ screen: MapScreen; module: string } | null>(null);
+  const qc = useQueryClient();
+  const accept = useMutation({
+    mutationFn: () => api.acceptMap(run.id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["run", run.id] });
+      qc.invalidateQueries({ queryKey: ["runs"] });
+      qc.invalidateQueries({ queryKey: ["apps"] });
+      qc.invalidateQueries({ queryKey: ["modules"] });
+    },
+  });
   if (map.isLoading) return <Skeleton className="h-64" />;
   const modules = map.data?.modules ?? [];
   if (!modules.length) {
@@ -21,8 +31,25 @@ export function AppMapView({ run }: { run: Run }) {
   }
   const platform = run.platform === "android" ? "&platform=android" : "";
   const testLink = (module: string) => `/runs/new?app=${run.app_id}&module=${encodeURIComponent(module)}${platform}`;
+  const unfinished = run.status !== "completed" && !run.active;
   return (
     <div className="flex flex-col gap-5">
+      {unfinished && (
+        <Alert
+          tone="warning"
+          action={
+            <Button size="sm" variant="primary" onClick={() => accept.mutate()} disabled={accept.isPending}>
+              <CheckCircle />
+              Pakai hasil pemetaan ini
+            </Button>
+          }
+        >
+          Pemetaan ini berhenti sebelum selesai, jadi tombol <b>Uji modul ini</b> dan <b>Alur bisnis</b> belum bisa dipakai.
+          Klik <b>Pakai hasil pemetaan ini</b> untuk memakai {map.data?.screens} layar yang sudah terpetakan, atau jalankan
+          Seluruh aplikasi lagi untuk memetakan lebih banyak menu.
+        </Alert>
+      )}
+      {accept.error && <Alert tone="error">{(accept.error as Error).message}</Alert>}
       <p className="text-sm text-fg-muted">
         {map.data?.screens} layar dipetakan dalam {modules.length} modul. Klik layar untuk melihat detailnya. Untuk menguji, klik{" "}
         <b>Uji modul ini</b> pada modulnya; AI menyusun test case dari layar-layar di modul itu. Alur yang melintasi beberapa

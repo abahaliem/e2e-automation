@@ -7,7 +7,7 @@ import { AppMapView } from "./AppMapView";
 
 vi.mock("@/lib/api", async (orig) => {
   const mod = await orig<typeof import("@/lib/api")>();
-  return { ...mod, api: { ...mod.api, runMap: vi.fn() } };
+  return { ...mod, api: { ...mod.api, runMap: vi.fn(), acceptMap: vi.fn() } };
 });
 const mocked = vi.mocked(api);
 
@@ -29,6 +29,20 @@ describe("Peta aplikasi (hasil Seluruh aplikasi)", () => {
     expect(screen.getByRole("img", { name: "Layar Sign In" })).toHaveAttribute("src", "/api/runs/21/files/s1.png");
     const links = screen.getAllByRole("link", { name: /Uji modul ini/ });
     expect(links[1]).toHaveAttribute("href", "/runs/new?app=4&module=Work%20Order&platform=android");
+  });
+
+  it("pemetaan terhenti: tombol Pakai hasil pemetaan ini", async () => {
+    mocked.runMap.mockResolvedValue({
+      screens: 2,
+      modules: [{ name: "Beranda", screens: [{ page_name: "Dashboard Order", purpose: "", url: "a", public: false, depth: 0, forms: [], actions: [], screenshot_url: null }] }],
+    } as never);
+    mocked.acceptMap.mockResolvedValue({} as never);
+    const run = { id: 29, app_id: 4, platform: "android", status: "interrupted", mode: "explore", active: false } as Run;
+    renderWithProviders(<AppMapView run={run} />);
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: /Pakai hasil pemetaan ini/ }));
+    expect(mocked.acceptMap).toHaveBeenCalledWith(29);
+    expect(screen.queryByRole("link", { name: /Uji modul ini/ })).not.toBeInTheDocument();
   });
 
   it("klik layar membuka detailnya", async () => {
