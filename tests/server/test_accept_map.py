@@ -40,6 +40,24 @@ def test_interrupted_map_can_be_used_for_module_tests(ctx):
     assert mods["explored"] is True and mods["modules"] == ["Beranda"]
 
 
+def test_qa_adds_missing_menu_and_planner_sees_it(ctx):
+    from pathlib import Path
+
+    from qa_agent.agent.prompts import plan_message
+
+    client, app, a, make = ctx
+    run_id = make(screens=1)
+    r = client.patch(f"/api/runs/{run_id}/map/screen",
+                     json={"url": "/s0", "qa_actions": ["Customer Information", " customer  information ", "History"]})
+    assert r.status_code == 200
+    screen = r.json()["modules"][0]["screens"][0]
+    assert screen["qa_actions"] == ["Customer Information", "History"]  # duplikat dibuang
+    app_map = RunStore(Path(app.state.store.get_run(run_id).folder)).read_app_map()
+    text = plan_message(app_map.screens, None).text
+    assert "tambahan dari QA" in text and "Customer Information, History" in text
+    assert client.patch(f"/api/runs/{run_id}/map/screen", json={"url": "/tidak-ada", "qa_actions": []}).status_code == 404
+
+
 def test_accept_map_refused_without_screens_or_while_running(ctx):
     client, app, a, make = ctx
     empty = make(screens=0)

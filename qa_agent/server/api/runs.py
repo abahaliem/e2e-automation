@@ -183,10 +183,45 @@ def run_map(run_id: int, request: Request) -> dict:
         screens = [{
             "page_name": s.page_name, "purpose": s.purpose, "url": s.url, "public": s.public, "depth": s.depth,
             "forms": [f.get("name", "") for f in s.forms if isinstance(f, dict)], "actions": s.actions,
+            "qa_actions": s.qa_actions,
             "screenshot_url": f"/api/runs/{run_id}/files/{s.screenshot}" if s.screenshot else None,
         } for s in app_map.screens_for(name)]
         modules.append({"name": name, "screens": screens})
     return {"modules": modules, "screens": len(app_map.screens)}
+
+
+class ScreenActionsIn(BaseModel):
+    url: str = Field(min_length=1, max_length=2000)
+    qa_actions: list[str] = Field(default_factory=list, max_length=50)
+
+
+@router.patch("/runs/{run_id}/map/screen")
+def update_screen_actions(run_id: int, body: ScreenActionsIn, request: Request) -> dict:
+    """QA menambah aksi/menu yang terlewat oleh agent di sebuah layar (mis. 'Customer Information').
+    Ikut dipakai AI saat menyusun test case modul itu."""
+    from pathlib import Path
+
+    from qa_agent.agent.control import InterventionError
+    from qa_agent.evidence import RunStore
+
+    row = deps.get_run_or_404(request, run_id)
+    if row.mode != "explore":
+        raise ValueError("Aksi layar hanya bisa diubah di hasil Seluruh aplikasi")
+    if deps.manager(request).is_active(run_id):
+        raise InterventionError("Pemetaan masih berjalan. Tunggu selesai dulu")
+    rs = RunStore(Path(row.folder))
+    app_map = rs.read_app_map()
+    screen = next((s for s in app_map.screens if s.url == body.url), None) if app_map else None
+    if screen is None:
+        raise deps.not_found("Layar")
+    cleaned: list[str] = []
+    for text in body.qa_actions:
+        text = " ".join(text.split())[:200]
+        if text and text.lower() not in {a.lower() for a in cleaned}:
+            cleaned.append(text)
+    screen.qa_actions = cleaned
+    rs.write_app_map(app_map)
+    return run_map(run_id, request)
 
 
 @router.get("/runs/{run_id}/plan")

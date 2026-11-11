@@ -146,6 +146,7 @@ class ScreenInfo(BaseModel):
     parent: str | None = None
     public: bool = False
     nav_path: list[dict] = Field(default_factory=list)  # Android: urutan tap dari awal aplikasi ke layar ini
+    qa_actions: list[str] = Field(default_factory=list)  # aksi/menu yang ditambahkan QA (terlewat oleh agent)
 
 
 class AppMap(BaseModel):

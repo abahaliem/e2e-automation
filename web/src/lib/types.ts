@@ -374,6 +374,8 @@ export type MapScreen = {
   depth: number;
   forms: string[];
   actions: string[];
+  /** Aksi/menu yang ditambahkan QA karena terlewat oleh agent. */
+  qa_actions?: string[];
   screenshot_url: string | null;
 };
 export type RunMap = { modules: { name: string; screens: MapScreen[] }[]; screens: number };

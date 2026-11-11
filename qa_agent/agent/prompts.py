@@ -139,6 +139,9 @@ def plan_message(screens: list[ScreenInfo], prd_text: str | None) -> Message:
             lines.append(f"  Form {form.get('name', '')}: {fields}")
         if s.actions:
             lines.append(f"  Aksi: {', '.join(s.actions)}")
+        if s.qa_actions:
+            lines.append(f"  Aksi/menu tambahan dari QA (belum dijelajahi agent, WAJIB dibuatkan test case; "
+                         f"start_url = layar ini, langkah pertama membuka aksi/menu tersebut): {', '.join(s.qa_actions)}")
     if prd_text:
         lines += ["", "## PRD", prd_text[:12000]]
     return Message(role="user", text="\n".join(lines))

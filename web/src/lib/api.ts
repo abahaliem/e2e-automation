@@ -193,6 +193,8 @@ export const api = {
   acceptMap: (id: number) => post<Run>(`/api/runs/${id}/accept-map`),
   deleteRun: (id: number) => del(`/api/runs/${id}`),
   runMap: (id: number) => get<RunMap>(`/api/runs/${id}/map`),
+  updateScreenActions: (id: number, url: string, qaActions: string[]) =>
+    patch<RunMap>(`/api/runs/${id}/map/screen`, { url, qa_actions: qaActions }),
   getPlan: (id: number) => get<PlanResponse>(`/api/runs/${id}/plan`),
   savePlan: (id: number, cases: PlanCase[]) => request<PlanResponse>(`/api/runs/${id}/plan`, { method: "PUT", json: { cases } }),
 

@@ -1,10 +1,10 @@
-import { CheckCircle, LockSimpleOpen, MagnifyingGlassPlus, Target, X } from "@phosphor-icons/react";
+import { CheckCircle, LockSimpleOpen, MagnifyingGlassPlus, Plus, Target, X } from "@phosphor-icons/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useState } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { Link } from "react-router-dom";
-import { Alert, Button, Card, EmptyState, Skeleton } from "@/components/ui";
+import { Alert, Button, Card, EmptyState, Input, Skeleton } from "@/components/ui";
 import { api } from "@/lib/api";
-import type { MapScreen, Run } from "@/lib/types";
+import type { MapScreen, Run, RunMap } from "@/lib/types";
 
 /** Hasil run Seluruh aplikasi: modul dan layar yang dipetakan, detail tiap layar, dan tombol uji per modul. */
 export function AppMapView({ run }: { run: Run }) {
@@ -113,9 +113,16 @@ export function AppMapView({ run }: { run: Run }) {
       ))}
       {open && (
         <ScreenDialog
+          runId={run.id}
+          editable={!run.active}
           screen={open.screen}
           module={open.module}
           testHref={run.status === "completed" ? testLink(open.module) : null}
+          onSaved={(data) => {
+            qc.setQueryData(["run-map", run.id], data);
+            const fresh = data.modules.flatMap((m) => m.screens).find((s) => s.url === open.screen.url);
+            if (fresh) setOpen({ screen: fresh, module: open.module });
+          }}
           onClose={() => setOpen(null)}
         />
       )}
@@ -123,7 +130,37 @@ export function AppMapView({ run }: { run: Run }) {
   );
 }
 
-function ScreenDialog({ screen: s, module, testHref, onClose }: { screen: MapScreen; module: string; testHref: string | null; onClose: () => void }) {
+function ScreenDialog({
+  runId,
+  editable,
+  screen: s,
+  module,
+  testHref,
+  onSaved,
+  onClose,
+}: {
+  runId: number;
+  editable: boolean;
+  screen: MapScreen;
+  module: string;
+  testHref: string | null;
+  onSaved: (data: RunMap) => void;
+  onClose: () => void;
+}) {
+  const [draft, setDraft] = useState("");
+  const qaActions = s.qa_actions ?? [];
+  const save = useMutation({
+    mutationFn: (next: string[]) => api.updateScreenActions(runId, s.url, next),
+    onSuccess: (data) => {
+      setDraft("");
+      onSaved(data);
+    },
+  });
+  const add = (e: FormEvent) => {
+    e.preventDefault();
+    const text = draft.trim();
+    if (text && !qaActions.some((a) => a.toLowerCase() === text.toLowerCase())) save.mutate([...qaActions, text]);
+  };
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
     window.addEventListener("keydown", onKey);
@@ -157,15 +194,47 @@ function ScreenDialog({ screen: s, module, testHref, onClose }: { screen: MapScr
           </div>
           {s.purpose && <p className="text-fg-muted">{s.purpose}</p>}
           <Detail label="Form">{s.forms.length ? s.forms.join(", ") : "Tidak ada form"}</Detail>
-          {s.actions.length > 0 && (
-            <Detail label="Aksi di layar ini">
-              <ul className="list-disc pl-4">
-                {s.actions.map((a) => (
-                  <li key={a}>{a}</li>
-                ))}
-              </ul>
-            </Detail>
-          )}
+          <Detail label="Aksi di layar ini">
+            <ul className="flex flex-col gap-1">
+              {s.actions.map((a) => (
+                <li key={a} className="flex items-start gap-2">
+                  <span className="mt-2 h-1 w-1 shrink-0 rounded-full bg-fg-muted" />
+                  {a}
+                </li>
+              ))}
+              {qaActions.map((a) => (
+                <li key={`qa-${a}`} className="flex items-start gap-2">
+                  <span className="mt-2 h-1 w-1 shrink-0 rounded-full bg-accent" />
+                  <span className="flex-1">
+                    {a} <span className="ml-1 rounded bg-accent-soft px-1 py-0.5 text-[10px] font-medium text-accent">QA</span>
+                  </span>
+                  {editable && (
+                    <button type="button" aria-label={`Hapus aksi ${a}`} disabled={save.isPending}
+                      onClick={() => save.mutate(qaActions.filter((x) => x !== a))}
+                      className="rounded p-0.5 text-fg-dim hover:bg-ink-850 hover:text-fail">
+                      <X />
+                    </button>
+                  )}
+                </li>
+              ))}
+              {!s.actions.length && !qaActions.length && <li className="text-fg-muted">Belum ada aksi tercatat</li>}
+            </ul>
+            {editable && (
+              <form onSubmit={add} className="mt-2 flex gap-2">
+                <Input aria-label="Tambah aksi" value={draft} placeholder="mis. Customer Information" onChange={(e) => setDraft(e.target.value)} />
+                <Button type="submit" size="sm" disabled={!draft.trim() || save.isPending}>
+                  <Plus />
+                  Tambah
+                </Button>
+              </form>
+            )}
+            {editable && (
+              <p className="mt-1 text-xs text-fg-dim">
+                Tambahkan menu/aksi yang terlewat. AI akan membuatkan test case untuknya saat modul ini diuji.
+              </p>
+            )}
+            {save.error && <p className="mt-1 text-xs text-fail">{(save.error as Error).message}</p>}
+          </Detail>
           <Detail label="Akses">{s.public ? "Bisa dibuka tanpa login" : "Perlu login"}</Detail>
           <Detail label="Lokasi">
             <span className="break-all font-mono text-xs">{s.url}</span>

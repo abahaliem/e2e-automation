@@ -599,7 +599,8 @@ def _write_inventory(ws: Worksheet, app_map: AppMap) -> None:
         forms = "\n".join(
             f"{f.get('name', 'Form')}: " + ", ".join(f"{fd.get('label', '?')} ({fd.get('type', '?')})" for fd in f.get("fields", []))
             for f in s.forms)
-        _append(ws, [s.module, s.page_name, s.url, s.purpose, forms, ", ".join(s.actions), "Publik" if s.public else "Login", None])
+        actions = ", ".join(list(s.actions) + [f"{a} (QA)" for a in s.qa_actions])
+        _append(ws, [s.module, s.page_name, s.url, s.purpose, forms, actions, "Publik" if s.public else "Login", None])
         row = ws.max_row
         for cell in ws[row]:
             cell.alignment = WRAP
