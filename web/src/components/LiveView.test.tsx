@@ -39,6 +39,10 @@ describe("LiveView", () => {
     surface.getBoundingClientRect = () => rect(0, 0, 683, 384);
     fireEvent.click(surface, { clientX: 341.5, clientY: 96 });
     expect(onInput).toHaveBeenCalledWith({ kind: "click", x: 0.5, y: 0.25 });
+    // tanda di titik klik supaya QA tahu bagian mana yang dikirim
+    const mark = screen.getByTestId("click-mark");
+    expect(mark).toHaveStyle({ left: "50%", top: "25%" });
+    expect(mark).toHaveTextContent("Klik #1");
     fireEvent.wheel(surface, { deltaY: 120 });
     expect(onInput).toHaveBeenLastCalledWith({ kind: "scroll", dy: 120 });
   });

@@ -39,6 +39,8 @@ export function applyEvent(snap: Snapshot, event: RunEvent): Snapshot {
       break;
     case "control.state":
       next.control_state = event.state as Snapshot["control_state"];
+      if (typeof event.paused_seconds === "number") next.paused_seconds = event.paused_seconds;
+      if ("paused_since" in event) next.paused_since = (event.paused_since as number | null) ?? null;
       if ((event.state === "running" || event.state === "stopped") && event.command !== "explore.ask") next.asking = null;
       break;
     case "explore.ask":

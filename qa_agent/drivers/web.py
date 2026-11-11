@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import time
+from io import BytesIO
 from pathlib import Path
 from typing import Any, Callable
 from urllib.parse import urljoin, urlsplit
@@ -9,10 +10,12 @@ from urllib.parse import urljoin, urlsplit
 from playwright.sync_api import Error as PlaywrightError
 from playwright.sync_api import TimeoutError as PlaywrightTimeout
 from playwright.sync_api import sync_playwright
+from PIL import Image
 
 from qa_agent import imaging
 from qa_agent.drivers.base import DriverCrashed, missing_credential
-from qa_agent.drivers.web_dom import EXTRACT_JS, UI_ERROR_JS, to_element
+from qa_agent.drivers.web_dom import ERROR_WATCH_JS, EXTRACT_JS, UI_ERROR_JS, to_element
+from qa_agent.evidence import now_iso
 from qa_agent.models import Action, ActionResult, Element, Observation, Signal
 from qa_agent.orchestrator.fingerprint import fingerprint
 
@@ -20,6 +23,10 @@ TRACKED_RESOURCES = {"document", "xhr", "fetch"}
 BENIGN_JS_ERRORS = ("ResizeObserver loop",)
 _FATAL_MARKERS = ("has been closed", "Target closed", "Browser closed")
 SCREENCAST_FPS = 6
+SETTLE_MAX_MS = 3000  # batas menunggu halaman tenang setelah aksi
+QUIET_SECONDS = 0.3  # cukup tenang selama ini tanpa request baru
+LONG_REQUEST = 1.5  # request yang terbuka lebih lama dari ini dianggap polling/stream, tidak ditunggu
+POLL_HITS, POLL_WINDOW = 3, 5.0  # endpoint dipanggil >= 3x dalam 5 detik = polling
 SCREENCAST_MAX_WIDTH = 1280
 SCREENCAST_QUALITY = 60
 
@@ -79,6 +86,13 @@ class WebDriver:
         self._page: Any = None
         self._frames: list[Any] = []
         self._signals: list[Signal] = []
+        # (teks, png, waktu) error yang terlihat di halaman, difoto tepat saat muncul
+        self._seen_errors: list[tuple[str, bytes, str]] = []
+        self._seen_pending: list[tuple[str, str]] = []  # (teks, waktu) menunggu difoto
+        self._seen_since = 0.0
+        self._inflight: dict[int, float] = {}  # request yang sedang berjalan → waktu mulai
+        self._net_at = 0.0  # waktu aktivitas jaringan terakhir
+        self._hits: dict[str, list[float]] = {}  # endpoint → waktu panggilan terakhir (deteksi polling)
         self._credentials: dict[str, str] = {}
         # layar live (CDP screencast)
         self._frame_sink: Callable[[bytes, dict], None] | None = None
@@ -120,14 +134,27 @@ class WebDriver:
                                                   service_workers=service_workers)
         if self.request_filter is not None:
             self._context.route("**/*", self._route)
+        try:
+            self._context.expose_binding("__qaErrorSeen", self._on_error_seen)
+            self._context.add_init_script(ERROR_WATCH_JS)
+        except PlaywrightError:
+            pass  # pemantau error hanya pelengkap
         page = self._context.new_page()
         page.set_default_timeout(self.action_timeout_ms)
         page.set_default_navigation_timeout(self.navigation_timeout_ms)
         page.on("console", self._on_console)
         page.on("pageerror", self._on_page_error)
         page.on("response", self._on_response)
+        page.on("request", self._on_request)
+        page.on("requestfinished", self._on_request_done)
+        page.on("requestfailed", self._on_request_done)
+        self._inflight = {}
+        self._hits = {}
+        self._net_at = 0.0
         self._page = page
         self._signals = []
+        self._seen_errors = []
+        self._seen_pending = []
         self._frames = []
         if self._streaming and self._frame_sink is not None:
             self._start_screencast()
@@ -155,6 +182,7 @@ class WebDriver:
             self._page.wait_for_timeout(ms)
         except PlaywrightError:
             pass
+        self._flush_seen()
 
     def _start_screencast(self) -> None:
         if self._page is None or self._cdp is not None:
@@ -187,6 +215,16 @@ class WebDriver:
         if cdp is not self._cdp or self._frame_sink is None:
             return
         now = time.monotonic()
+        if self._seen_pending and now - self._seen_since >= 0.1:
+            # frame live pertama setelah error terlihat = foto bukti (tanpa memanggil API Playwright di callback)
+            try:
+                img = Image.open(BytesIO(base64.b64decode(params["data"])))
+                buf = BytesIO()
+                img.save(buf, "PNG")
+                pending, self._seen_pending = self._seen_pending, []
+                self._seen_errors.extend((text, buf.getvalue(), at) for text, at in pending)
+            except Exception:  # noqa: BLE001
+                pass
         if now - self._last_frame_at < 1.0 / SCREENCAST_FPS:
             return  # batasi ~6 fps
         self._last_frame_at = now
@@ -197,6 +235,20 @@ class WebDriver:
             self._frame_sink(base64.b64decode(params["data"]), info)
         except Exception:
             pass  # penonton bermasalah tidak boleh menghentikan run
+
+    def session_alive(self) -> bool:
+        """Halaman aplikasi masih terbuka (boleh dipakai lagi tanpa membuat sesi browser baru)."""
+        if self._page is None or self._context is None:
+            return False
+        try:
+            if self._page.is_closed():
+                return False
+            return _origin(self._page.url) == _origin(self.base_url)
+        except Exception:  # noqa: BLE001
+            return False
+
+    def reset_signals(self) -> None:
+        self._signals, self._seen_errors, self._seen_pending = [], [], []
 
     def save_auth_state(self, path: Path) -> None:
         path = Path(path)
@@ -239,6 +291,27 @@ class WebDriver:
             self._signals.append(Signal(kind="http_error", message=f"HTTP {response.status}", status=response.status,
                                         url=response.url, method=response.request.method))
 
+    def _on_error_seen(self, source: Any, text: str) -> None:
+        """Dipanggil dari halaman saat toast/alert error muncul. Hanya mencatat: memanggil API Playwright dari
+        callback binding membuat macet. Fotonya diambil dari frame layar live berikutnya atau di _flush_seen()."""
+        text = str(text or "")[:300]
+        known = [t for t, _, _ in self._seen_errors] + [t for t, _ in self._seen_pending]
+        if not text or text in known or len(known) >= 10:
+            return
+        self._seen_pending.append((text, now_iso()))
+        self._seen_since = time.monotonic()
+
+    def _flush_seen(self) -> None:
+        """Foto layar untuk error yang baru terlihat (dipanggil saat kendali kembali ke Python)."""
+        if not self._seen_pending or self._page is None:
+            return
+        pending, self._seen_pending = self._seen_pending, []
+        try:
+            png = self._page.screenshot()
+        except Exception:  # noqa: BLE001
+            png = b""
+        self._seen_errors.extend((text, png, at) for text, at in pending)
+
     def _drain_signals(self) -> list[Signal]:
         signals, self._signals = self._signals, []
         return signals
@@ -260,13 +333,45 @@ class WebDriver:
         self._settle()
 
     def _settle(self) -> None:
+        """Tunggu halaman tenang setelah aksi, tanpa terjebak polling.
+
+        `networkidle` bawaan Playwright butuh 0,5 detik tanpa request sama sekali; dashboard yang terus polling
+        (statistik live, debugbar, websocket fallback) tidak pernah idle sehingga setiap langkah selalu menunggu
+        penuh 3 detik, dua kali per langkah. Di sini yang ditunggu hanya request yang baru dimulai (< LONG_REQUEST
+        detik); request yang terbuka lama (long-polling, stream) diabaikan, dan cukup tenang QUIET_SECONDS."""
         try:
-            self.page.wait_for_load_state("networkidle", timeout=3000)
+            self.page.wait_for_load_state("domcontentloaded", timeout=SETTLE_MAX_MS)
+            begin = time.monotonic()
+            deadline = begin + SETTLE_MAX_MS / 1000
+            while True:
+                now = time.monotonic()
+                busy = any(now - started < LONG_REQUEST for started in self._inflight.values())
+                # "tenang" dihitung sejak mulai menunggu: request yang dipicu aksi sesaat kemudian tetap ditunggu
+                if (not busy and now - max(self._net_at, begin) >= QUIET_SECONDS) or now >= deadline:
+                    break
+                self.page.wait_for_timeout(50)
         except PlaywrightTimeout:
             pass
         except PlaywrightError as e:
             if _is_fatal(e):
                 raise DriverCrashed(_first_line(e)) from e
+
+    def _on_request(self, request: Any) -> None:
+        if request.resource_type in ("websocket", "eventsource", "media"):
+            return
+        now = time.monotonic()
+        # Endpoint yang dipanggil berulang-ulang = polling (statistik live, notifikasi): tidak ditunggu
+        key = f"{request.method} {urlsplit(request.url).path}"
+        hits = [t for t in self._hits.get(key, []) if now - t < POLL_WINDOW] + [now]
+        self._hits[key] = hits[-5:]
+        if len(hits) >= POLL_HITS:
+            return
+        self._inflight[id(request)] = now
+        self._net_at = now
+
+    def _on_request_done(self, request: Any) -> None:
+        if self._inflight.pop(id(request), None) is not None:
+            self._net_at = time.monotonic()
 
     def _scan_frames(self) -> list[tuple[Any, tuple[float, float]]]:
         main = self.page.main_frame
@@ -284,7 +389,9 @@ class WebDriver:
         return frames
 
     def _observe_once(self) -> Observation:
+        self._flush_seen()
         self._settle()
+        self._flush_seen()
         elements: list[Element] = []
         frames: list[Any] = []
         for frame, offset in self._scan_frames():
@@ -299,12 +406,32 @@ class WebDriver:
         ui_errors = self.page.evaluate(UI_ERROR_JS)
         png = self.page.screenshot()
         url = self.page.url
-        signals = self._drain_signals() + [Signal(kind="ui_error", message=text) for text in ui_errors]
+        at = now_iso()
+        evidence: dict[str, bytes] = {}
+        signals = self._drain_signals()
+        for text in ui_errors:
+            signals.append(Signal(kind="ui_error", message=text, at=at))
+            evidence[text] = png
+        # error yang sempat muncul lalu hilang sebelum agent melihat layar (toast, popup singkat)
+        seen, self._seen_errors = self._seen_errors, []
+        for text, shot, when in seen:
+            if any(text in u or u in text for u in ui_errors):
+                if shot:
+                    evidence[next(u for u in ui_errors if text in u or u in text)] = shot
+                continue
+            message = f"Pesan muncul sesaat lalu hilang: {text}"[:300]
+            signals.append(Signal(kind="ui_error", message=message, at=when))
+            if shot:
+                evidence[message] = shot
+        for s in signals:  # error JavaScript / server: bukti = layar saat ini
+            if s.kind in ("page_error", "http_error") and s.message not in evidence and (s.status or 500) >= 500:
+                evidence[s.message] = png
         return Observation(
             location=url,
             title=self.page.title(),
             elements=elements,
             signals=signals,
+            evidence=evidence,
             screenshot_annotated=imaging.annotate(png, elements),
             fingerprint=fingerprint(url, elements),
         )

@@ -18,8 +18,9 @@ from PIL import Image
 
 from qa_agent import imaging
 from qa_agent.drivers.adb import AdbError
-from qa_agent.drivers.android_dom import parse_ui, screen_key
+from qa_agent.drivers.android_dom import parse_ui, screen_key, screen_parts, similarity
 from qa_agent.drivers.base import DriverCrashed, missing_credential
+from qa_agent.evidence import now_iso
 from qa_agent.models import Action, ActionResult, Element, Observation, Signal
 from qa_agent.orchestrator.fingerprint import fingerprint
 
@@ -35,6 +36,8 @@ _ERROR_TEXT = re.compile(
     r"|ditolak|tidak valid|salah",
     re.IGNORECASE)
 AI_IMAGE_WIDTH = 720
+_SELECTOR_BOUNDS = re.compile(r"^([\w.$]+):.*:(\[\d+,\d+\]\[\d+,\d+\])$")
+FRESH_DUMP_SECONDS = 0.6  # bacaan layar dari _settle_screen() masih boleh dipakai observe() selama ini
 FRAME_WIDTH = 720
 
 
@@ -67,6 +70,11 @@ class AndroidDriver:
         self.back_probe = True  # explorer boleh menekan Kembali untuk menutup popup/form yang menutupi layar lain
         self._recording: list[dict] | None = None
         self._transient: list[str] = []  # teks error dari popup/snackbar yang tampil sesaat setelah tap
+        self._transient_shots: dict[str, bytes] = {}  # screenshot tepat saat popup error itu terbaca
+        self._fresh: tuple[list[Element], float] | None = None  # bacaan layar terakhir saat menunggu stabil
+        self._pid_now: tuple[str | None] | None = None
+        self.settle_max = 1.5  # jalur cepat: tunggu layar stabil paling lama sekian detik
+        self._parts: dict[str, set[str]] = {}  # lokasi → penanda elemen (untuk mengenali layar berisi dinamis)
         self.frame_workers = 2  # screencap HP lambat (~0,3-0,8 dtk): dua pengambil bergantian supaya live lebih mulus
         self.blocked_requests: list[str] = []
         self._size = (1080, 1920)
@@ -100,6 +108,7 @@ class AndroidDriver:
 
     def new_session(self, auth_state: Path | None = None) -> None:
         """Buka ulang aplikasi dari awal. Data aplikasi (termasuk sesi login) tidak dihapus."""
+        self._fresh = None
         try:
             self.adb.force_stop(self.package)
             self.adb.launch(self.package)
@@ -115,13 +124,32 @@ class AndroidDriver:
         self._sleep(max(self.settle_seconds, 1.5))
         self._wait_ready()
 
+    def reset_signals(self) -> None:
+        self._transient, self._transient_shots = [], {}
+
+    def session_alive(self) -> bool:
+        """Aplikasi masih berjalan dan tampil di depan (boleh dipakai lagi tanpa dibuka ulang)."""
+        if not self._alive:
+            return False
+        try:
+            package, _ = self.adb.current_activity()
+            return package == self.package and bool(self.adb.pidof(self.package))
+        except Exception:  # noqa: BLE001
+            return False
+
     def _wait_ready(self, polls: int = 24, interval: float = 0.5) -> None:
         """Tunggu splash/loading selesai: layar punya elemen dan sama pada dua pembacaan berturut-turut (maks ~12 detik)."""
-        previous = None
-        for _ in range(polls):
+        # Jalur cepat membaca layar dalam ~0,2 detik, sehingga splash/loading yang diam sesaat bisa terbaca sama dua
+        # kali. Karena itu di jalur cepat: harus sama 3x berturut-turut dan sudah ada tombol/elemen interaktif
+        # (kecuali sudah menunggu lama).
+        need = 3 if self._fast else 2
+        previous, same = None, 0
+        for n in range(polls):
             elements = self._dump()
             key = screen_key(elements) if elements else None
-            if key is not None and key == previous:
+            same = same + 1 if key is not None and key == previous else 1
+            ready = not self._fast or bool(screen_parts(elements)) or n >= polls // 2
+            if key is not None and same >= need and ready:
                 return
             previous = key
             self._sleep(interval)
@@ -136,6 +164,7 @@ class AndroidDriver:
 
     def replay_steps(self, steps: list[dict]) -> bool:
         """Putar ulang tap yang direkam. False bila ada langkah yang tidak ditemukan di layar."""
+        self._fresh = None
         for step in steps:
             if step.get("key") == "back":
                 self.adb.keyevent(KEY_BACK)
@@ -174,6 +203,9 @@ class AndroidDriver:
 
     # ---------- observasi ----------
     def _dump(self) -> list[Element]:
+        fresh, self._fresh = self._fresh, None
+        if fresh is not None and time.monotonic() - fresh[1] <= FRESH_DUMP_SECONDS:
+            return fresh[0]  # bacaan terakhir saat menunggu layar stabil, belum ada aksi sesudahnya
         last: Exception | None = None
         for attempt in range(3):
             try:
@@ -190,12 +222,30 @@ class AndroidDriver:
         return []
 
     def _locate(self, elements: list[Element]) -> str:
-        package, activity = self.adb.current_activity()
+        combined = getattr(self.adb, "focus_and_pid", None)
+        if combined is not None and getattr(self.adb, "fast_active", False):
+            package, activity, pid = combined(self.package)
+            self._pid_now = (pid,)  # dipakai _signals pada observasi yang sama
+        else:
+            package, activity = self.adb.current_activity()
         package = package or self.package
         short = activity.rsplit(".", 1)[-1] if activity else "Layar"
         location = f"android://{package}/{short}#{screen_key(elements)}"
+        self._parts.setdefault(location, screen_parts(elements))
         self._record(location)
         return location
+
+    SAME_SCREEN = 0.6  # kemiripan minimal agar layar dengan isi dinamis tetap dianggap layar yang sama
+
+    def _arrived(self, location: str, elements: list[Element]) -> bool:
+        """Sudah di layar `location`? Persis sama, atau activity sama dan tombol-tombolnya sebagian besar sama."""
+        here = self._locate(elements)
+        if here == location:
+            return True
+        known = self._parts.get(location)
+        if known is None or here.split("#", 1)[0] != location.split("#", 1)[0]:
+            return False
+        return similarity(screen_parts(elements), known) >= self.SAME_SCREEN
 
     def _record(self, location: str) -> None:
         """Catat jalur ke layar baru berdasarkan tap terakhir yang membuatnya berpindah."""
@@ -222,37 +272,92 @@ class AndroidDriver:
         elements = self._dump()
         location = self._locate(elements)
         png = self.screenshot()
-        signals = self._signals(elements)
+        evidence: dict[str, bytes] = {}
+        signals = self._signals(elements, evidence)
         if not elements and self._dump_error:
             signals.append(Signal(kind="ui_error", message=f"Elemen layar tidak terbaca: {self._dump_error[:200]}"))
+        for s in signals:  # error yang masih tampil (crash dialog dll.): bukti = layar saat ini
+            if (s.kind in ("ui_error", "page_error") and s.message not in evidence and png
+                    and not s.message.startswith("Pesan muncul sesaat")):
+                evidence[s.message] = png
         title = next((e.name for e in elements if e.role == "text"), location.rsplit("/", 1)[-1].split("#")[0])
         return Observation(
-            location=location, title=title, elements=elements, signals=signals,
+            location=location, title=title, elements=elements, signals=signals, evidence=evidence,
             screenshot_annotated=_shrink_png(imaging.annotate(png, elements), AI_IMAGE_WIDTH),
             fingerprint=fingerprint(location, elements),
         )
 
+    @property
+    def _fast(self) -> bool:
+        return bool(getattr(self.adb, "fast_active", False))
+
+    def _settle_screen(self) -> None:
+        """Tunggu sampai layar stabil setelah aksi.
+
+        Jalur cepat (uiautomator2): baca layar tiap ~0,2 detik sampai dua bacaan sama (maks `settle_max`), setiap
+        bacaan sekaligus memeriksa popup error, dan bacaan terakhir dipakai ulang oleh observe(). Tanpa jalur cepat:
+        jeda tetap `settle_seconds` seperti biasa."""
+        if not self._fast:
+            self._sleep(self.settle_seconds)
+            return
+        deadline = time.monotonic() + self.settle_max
+        previous = None
+        self._sleep(0.15)
+        while True:
+            try:
+                elements = parse_ui(self.adb.dump_ui(), self.max_elements, self._size)
+            except Exception:
+                self._fresh = None
+                self._sleep(self.settle_seconds)
+                return
+            self._note_errors(elements)
+            key = [(e.role, e.name, e.bbox) for e in elements]
+            if (key == previous and elements) or time.monotonic() >= deadline:
+                self._fresh = (elements, time.monotonic())
+                return
+            previous = key
+            self._sleep(0.05)
+
     def _watch_transient(self) -> None:
         """Baca layar sekali tepat setelah tap: popup/snackbar error yang hilang sendiri tetap tertangkap."""
+        if self._fast:
+            return  # jalur cepat: diperiksa di setiap bacaan _settle_screen()
         self._sleep(0.3)
         try:
             elements = parse_ui(self.adb.dump_ui(), self.max_elements, self._size)
         except Exception:
             return
+        self._note_errors(elements)
+
+    def _note_errors(self, elements: list[Element]) -> None:
+        shot: bytes | None = None
         for el in elements:
             text = (el.name or "").strip()
             if text and _ERROR_TEXT.search(text) and text not in self._transient:
                 self._transient.append(text)
+                if shot is None:  # foto sekali, selagi popup masih tampil
+                    try:
+                        shot = self.adb.screencap()
+                    except Exception:
+                        shot = b""
+                if shot:
+                    self._transient_shots[text] = shot
 
-    def _signals(self, elements: list[Element]) -> list[Signal]:
+    def _signals(self, elements: list[Element], evidence: dict[str, bytes] | None = None) -> list[Signal]:
         signals: list[Signal] = []
         if self._transient:
             visible = {(e.name or "").strip() for e in elements}
             for text in self._transient:
                 if text not in visible:  # yang masih tampil sudah terlihat agent di daftar elemen
-                    signals.append(Signal(kind="ui_error", message=f"Pesan muncul sesaat lalu hilang: {text}"[:300]))
+                    message = f"Pesan muncul sesaat lalu hilang: {text}"[:300]
+                    signals.append(Signal(kind="ui_error", message=message, at=now_iso()))
+                    if evidence is not None and text in self._transient_shots:
+                        evidence[message] = self._transient_shots[text]
             self._transient = []
-        if self._alive and not self._crash_reported and not self.adb.pidof(self.package):
+            self._transient_shots = {}
+        pid_now, self._pid_now = self._pid_now, None
+        alive = pid_now[0] if pid_now is not None else (self.adb.pidof(self.package) if self._alive else "x")
+        if self._alive and not self._crash_reported and not alive:
             self._crash_reported = True
             log = self.adb.crash_log(self.package)
             detail = " | ".join(ln.strip() for ln in log.splitlines()[:4] if ln.strip())
@@ -275,24 +380,20 @@ class AndroidDriver:
 
     # ---------- navigasi ----------
     def goto(self, location: str) -> None:
+        self._fresh = None
         if location.startswith(("http://", "https://")):
             raise RuntimeError(f"Lokasi web tidak berlaku untuk aplikasi Android: {location}")
         if self._start_location(location):
             self.new_session(None)
             return
-        current = self.current_url
-        if current == location:
+        if self._arrived(location, self._dump()):
             return
         target = self._paths.get(location)
         if target is None:
             raise RuntimeError(f"Layar {location} tidak bisa dicapai (jalur belum tercatat)")
-        here = self._paths.get(current)
-        if here is not None and len(here) > len(target) and here[: len(target)] == target and len(here) - len(target) <= 2:
-            for _ in range(len(here) - len(target)):
-                self.adb.keyevent(KEY_BACK)
-                self._sleep(self.settle_seconds)
-            if self.current_url == location:
-                return
+        # Pindah menu langsung di dalam aplikasi; tutup-buka ulang aplikasi hanya cadangan terakhir
+        if self._navigate_in_app(location, target):
+            return
         self.new_session(None)
         i = 0
         while i < len(target):
@@ -309,7 +410,7 @@ class AndroidDriver:
                 # Langkah yang tidak ada di layar dilewati (mis. tombol login saat aplikasi sudah login).
                 j = next((k for k in range(i + 1, len(target)) if self._find_step(target[k], elements)), None)
                 if j is None:
-                    if self._locate(elements) == location:
+                    if self._arrived(location, elements):
                         return  # sudah tiba (langkah sisa tidak diperlukan, mis. tombol login)
                     raise RuntimeError(f"Layar {location} tidak bisa dicapai: '{target[i].get('name')}' tidak ditemukan")
                 i, el = j, self._find_step(target[j], elements)
@@ -318,8 +419,8 @@ class AndroidDriver:
             i += 1
         self._path_here = list(target)
         elements = self._dump()
-        reached = self._locate(elements)
-        if reached != location and not self._is_login(elements):
+        if not self._arrived(location, elements) and not self._is_login(elements):
+            reached = self._location
             if not target:
                 raise RuntimeError(
                     "Layar awal test case ini tidak tampil saat aplikasi dibuka. Layar tersebut kemungkinan hanya muncul "
@@ -327,11 +428,71 @@ class AndroidDriver:
                     f" ({location}, yang tampil {reached})")
             raise RuntimeError(f"Layar {location} tidak bisa dicapai (tiba di {reached})")
 
+    MAX_BACKS = 4  # tombol Back paling banyak sekian kali sebelum menyerah dan membuka ulang aplikasi
+
+    def _navigate_in_app(self, location: str, target: list[dict]) -> bool:
+        """Menuju `location` tanpa menutup aplikasi.
+
+        Dari layar sekarang (lalu setelah tiap tombol Back): cari langkah paling jauh di jalur tujuan yang tombolnya
+        sudah terlihat (mis. menu samping / tab bawah yang ada di semua layar), lalu lanjutkan dari situ. False bila
+        tidak berhasil; pemanggil lalu membuka ulang aplikasi seperti biasa."""
+        previous = None
+        for backs in range(self.MAX_BACKS + 1):
+            if backs:
+                self.adb.keyevent(KEY_BACK)
+                self._settle_screen()
+                package, _ = self.adb.current_activity()
+                if package and package != self.package:
+                    return False  # Back terakhir keluar dari aplikasi
+            elements = self._dump()
+            if not elements or self._is_login(elements):
+                return False
+            if self._arrived(location, elements):
+                return True
+            here = self._location
+            if here == previous:
+                return False  # Back tidak mengubah layar
+            previous = here
+            visible = [i for i, step in enumerate(target)
+                       if step.get("key") != "back" and self._find_step(step, elements) is not None]
+            if visible and self._replay_from(target, visible[-1], elements) and self._arrived(location, self._dump()):
+                self._path_here = list(target)
+                return True
+            if visible:
+                return False  # sudah dicoba tapi tiba di layar lain: buka ulang aplikasi agar pasti
+        return False
+
+    def _replay_from(self, target: list[dict], start: int, elements: list[Element]) -> bool:
+        """Tap langkah jalur mulai indeks `start` dari layar sekarang. False bila ada tombol yang tidak ditemukan."""
+        for i in range(start, len(target)):
+            step = target[i]
+            if step.get("key") == "back":
+                self.adb.keyevent(KEY_BACK)
+            else:
+                if i > start:
+                    elements = self._dump()
+                el = self._find_step(step, elements)
+                if el is None:
+                    return False
+                self.adb.tap(*_center(el))
+            self._settle_screen()
+        return True
+
     @staticmethod
     def _find_step(step: dict, elements: list[Element]) -> Element | None:
-        return next((e for e in elements if step.get("selector") and e.selector == step["selector"]
-                     and e.name == step.get("name")), None) or \
+        found = next((e for e in elements if step.get("selector") and e.selector == step["selector"]
+                      and e.name == step.get("name")), None) or \
             next((e for e in elements if e.role == step.get("role") and e.name == step.get("name")), None)
+        if found is not None:
+            return found
+        # Nama bisa berganti bahasa (mis. "Open navigation menu" ↔ "Buka menu navigasi") atau berubah isi:
+        # cocokkan jenis elemen + posisi persis di layar (tercatat di selector "kelas:nama:[x1,y1][x2,y2]").
+        match = _SELECTOR_BOUNDS.match(step.get("selector") or "")
+        if match is None:
+            return None
+        cls, bounds = match.groups()
+        return next((e for e in elements if e.role == step.get("role")
+                     and e.selector.startswith(f"{cls}:") and e.selector.endswith(f":{bounds}")), None)
 
     def _is_login(self, elements: list[Element]) -> bool:
         return Observation(location=self._location or f"android://{self.package}/", elements=elements).is_login_screen
@@ -370,6 +531,7 @@ class AndroidDriver:
         if kind in ("click", "type", "select") and element is None:
             return ActionResult(ok=False, error=f"Aksi {kind} butuh elemen")
         origin = self._location
+        self._fresh = None
         try:
             if kind in ("click", "select"):
                 self.adb.tap(*_center(element))  # type: ignore[arg-type]
@@ -407,7 +569,7 @@ class AndroidDriver:
             elif kind == "wait":
                 self._sleep(min(float(action.value or 2), 10.0))
                 return ActionResult(ok=True)
-            self._sleep(self.settle_seconds)
+            self._settle_screen()
             return ActionResult(ok=True)
         except (AdbError, DriverCrashed, RuntimeError, ValueError) as e:
             return self._error(e)
@@ -418,6 +580,7 @@ class AndroidDriver:
     def manual_input(self, event: dict) -> ActionResult:
         """Input QA dari layar live. Koordinat ternormalisasi 0..1 dikali ukuran layar HP."""
         kind = event.get("kind")
+        self._fresh = None
         try:
             w, h = self._size
             if kind == "click":
@@ -435,7 +598,7 @@ class AndroidDriver:
                 self._scroll(int(event.get("dy", 0)) >= 0)
             else:
                 return ActionResult(ok=False, error=f"Jenis input manual tidak dikenal: {kind}")
-            self._sleep(self.settle_seconds)
+            self._settle_screen()
             return ActionResult(ok=True)
         except (KeyError, TypeError) as e:
             return ActionResult(ok=False, error=f"Input manual tidak valid: {e}")

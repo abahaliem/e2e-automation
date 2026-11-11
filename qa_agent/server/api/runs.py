@@ -31,6 +31,7 @@ class RunIn(BaseModel):
     replay_scripts: bool = True
     heal: bool = True
     run_setup: bool = True
+    screens: list[str] | None = Field(default=None, max_length=200)  # Satu modul: layar tertentu saja
 
 
 class PlanCaseIn(BaseModel):
@@ -72,6 +73,7 @@ def run_out(request: Request, row: RunRow) -> dict:
     data["device_serial"] = row.options.get("device_serial")
     data["created_by"] = row.options.get("created_by")
     data["review_first"] = bool(row.options.get("review_first"))
+    data["screen_names"] = row.options.get("screen_names") or []  # layar tertentu saja (bukan seluruh modul)
     data["reuse_cases_from"] = row.options.get("reuse_cases_from")
     data["replay_scripts"] = bool(row.options.get("reuse_cases_from") and row.options.get("replay_scripts", True))
     data["awaiting_review"] = row.status == "paused" and row.note == REVIEW_NOTE
@@ -183,10 +185,45 @@ def run_map(run_id: int, request: Request) -> dict:
         screens = [{
             "page_name": s.page_name, "purpose": s.purpose, "url": s.url, "public": s.public, "depth": s.depth,
             "forms": [f.get("name", "") for f in s.forms if isinstance(f, dict)], "actions": s.actions,
+            "qa_actions": s.qa_actions,
             "screenshot_url": f"/api/runs/{run_id}/files/{s.screenshot}" if s.screenshot else None,
         } for s in app_map.screens_for(name)]
         modules.append({"name": name, "screens": screens})
     return {"modules": modules, "screens": len(app_map.screens)}
+
+
+class ScreenActionsIn(BaseModel):
+    url: str = Field(min_length=1, max_length=2000)
+    qa_actions: list[str] = Field(default_factory=list, max_length=50)
+
+
+@router.patch("/runs/{run_id}/map/screen")
+def update_screen_actions(run_id: int, body: ScreenActionsIn, request: Request) -> dict:
+    """QA menambah aksi/menu yang terlewat oleh agent di sebuah layar (mis. 'Customer Information').
+    Ikut dipakai AI saat menyusun test case modul itu."""
+    from pathlib import Path
+
+    from qa_agent.agent.control import InterventionError
+    from qa_agent.evidence import RunStore
+
+    row = deps.get_run_or_404(request, run_id)
+    if row.mode != "explore":
+        raise ValueError("Aksi layar hanya bisa diubah di hasil Seluruh aplikasi")
+    if deps.manager(request).is_active(run_id):
+        raise InterventionError("Pemetaan masih berjalan. Tunggu selesai dulu")
+    rs = RunStore(Path(row.folder))
+    app_map = rs.read_app_map()
+    screen = next((s for s in app_map.screens if s.url == body.url), None) if app_map else None
+    if screen is None:
+        raise deps.not_found("Layar")
+    cleaned: list[str] = []
+    for text in body.qa_actions:
+        text = " ".join(text.split())[:200]
+        if text and text.lower() not in {a.lower() for a in cleaned}:
+            cleaned.append(text)
+    screen.qa_actions = cleaned
+    rs.write_app_map(app_map)
+    return run_map(run_id, request)
 
 
 @router.get("/runs/{run_id}/plan")
@@ -219,6 +256,31 @@ def put_plan(run_id: int, body: PlanIn, request: Request) -> dict:
                                 expected=c.expected.strip(), expected_source=c.expected_source, start_url=c.start_url))
     deps.manager(request).update_plan(run_id, cases)
     return _plan_out(request, run_id)
+
+
+@router.post("/runs/{run_id}/accept-map")
+def accept_map(run_id: int, request: Request) -> dict:
+    """Pemetaan (Seluruh aplikasi) yang terhenti dipakai apa adanya: status jadi Selesai, sehingga modul dan alur
+    bisnis bisa diuji tanpa mengulang pemetaan dari awal."""
+    from pathlib import Path
+
+    from qa_agent.agent.control import InterventionError
+    from qa_agent.evidence import RunStore, now_iso
+
+    row = deps.get_run_or_404(request, run_id)
+    if row.mode != "explore":
+        raise ValueError("Hanya hasil Seluruh aplikasi (pemetaan) yang bisa dipakai")
+    if deps.manager(request).is_active(run_id):
+        raise InterventionError("Run masih berjalan. Klik Selesai di layar run, atau tunggu sampai berhenti")
+    if row.status == "completed":
+        return run_out(request, row)
+    app_map = RunStore(Path(row.folder)).read_app_map()
+    if app_map is None or not app_map.screens:
+        raise ValueError("Belum ada layar yang dipetakan di run ini. Jalankan Seluruh aplikasi lagi")
+    note = f"Hasil pemetaan sebagian dipakai ({len(app_map.screens)} layar); run sebelumnya: {row.note or row.status}"
+    updated = deps.store(request).update_run(run_id, status="completed", note=note,
+                                             finished_at=row.finished_at or now_iso())
+    return run_out(request, updated)
 
 
 @router.post("/runs/{run_id}/resume")

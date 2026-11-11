@@ -58,7 +58,7 @@ def create_app(settings: ServerSettings, *, secrets: SecretStore | None = None,
         from qa_agent.drivers.adb import Adb
 
         def adb_factory(serial: str | None = None):
-            return Adb(serial=serial)
+            return Adb(serial=serial, fast=True)
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):

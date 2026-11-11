@@ -163,7 +163,8 @@ def app_modules(app_id: int, request: Request) -> dict:
     modules = deps.manager(request).modules(app_id)
     explored = deps.store(request).latest_completed_explore(app_id) is not None
     flows = [{"id": f.id, "name": f.name} for f in deps.store(request).list_flows(app_id)]
-    return {"modules": modules, "explored": explored, "flows": flows}
+    screens = deps.manager(request).module_screens(app_id)  # layar per modul: QA bisa menguji layar tertentu saja
+    return {"modules": modules, "explored": explored, "flows": flows, "screens": screens}
 
 
 # ---------- modul kustom (alur bisnis) ----------

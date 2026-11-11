@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import asyncio
 import threading
+import time
 from collections import OrderedDict
 from typing import Any, Callable
 
@@ -29,9 +30,24 @@ class _RunState:
         self.cases: OrderedDict[str, dict] = OrderedDict()
         self.screens = 0
         self.asking: dict | None = None  # explorer menunggu jawaban QA: lanjutkan memetakan / selesai
+        # Lama dijeda (detik) supaya durasi run di layar tidak ikut berjalan saat QA menekan Jeda
+        self.paused_seconds = 0.0
+        self.paused_since: float | None = None  # epoch detik saat jeda dimulai
+
+    def _track_pause(self, paused: bool) -> None:
+        now = time.time()
+        if paused and self.paused_since is None:
+            self.paused_since = now
+        elif not paused and self.paused_since is not None:
+            self.paused_seconds += now - self.paused_since
+            self.paused_since = None
 
     def apply(self, event: dict) -> None:
         kind = event.get("type")
+        if kind == "control.state":
+            self._track_pause(event.get("state") == "paused")
+        elif kind == "run.status" and event.get("status") != "running":
+            self._track_pause(False)
         if kind == "run.status":
             self.status = event.get("status", self.status)
             self.note = event.get("note", self.note)
@@ -72,7 +88,12 @@ class _RunState:
             "control_state": self.control_state, "note": self.note, "counts": self.counts,
             "current_tc": self.current_tc, "planned": self.planned, "steps": list(self.steps.values()),
             "cases": list(self.cases.values()), "screens": self.screens, "asking": self.asking,
+            **self.pause_info(),
         }
+
+    def pause_info(self) -> dict:
+        return {"paused_seconds": round(self.paused_seconds, 1),
+                "paused_since": round(self.paused_since * 1000) if self.paused_since is not None else None}
 
 
 class EventHub:
@@ -95,6 +116,8 @@ class EventHub:
             state.seq += 1
             event = {**event, "run_id": run_id, "seq": state.seq}
             state.apply(event)
+            if event.get("type") == "control.state":
+                event.update(state.pause_info())  # penonton memperbarui penghitung waktu
             subs = list(self._subs.get(run_id, ()))
         for loop, queue in subs:
             self._deliver(loop, queue, event)

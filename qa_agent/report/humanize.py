@@ -45,5 +45,20 @@ def signal_text(signal: Signal) -> str:
         return " ".join(p for p in (f"HTTP {signal.status}", signal.method, signal.url) if p)
     if signal.kind == "blocked_request":
         return f"Request diblok: {signal.method} {signal.url}"
+    if signal.kind == "page_error" and signal.message.startswith(("Aplikasi tertutup", "Dialog sistem")):
+        return signal.message  # Android: crash / dialog sistem, bukan error JavaScript
     labels = {"console_error": "Console error", "page_error": "Error JavaScript", "ui_error": "Pesan error di layar"}
     return f"{labels.get(signal.kind, signal.kind)}: {signal.message}"
+
+
+# Sinyal yang ditampilkan sebagai bukti teknis di Temuan
+ERROR_KINDS = ("http_error", "page_error", "console_error", "ui_error")
+
+
+def error_evidence(records: list) -> Signal | None:
+    """Sinyal error pertama yang punya foto bukti (diambil tepat saat error muncul)."""
+    for r in records:
+        for s in r.signals:
+            if s.screenshot and s.kind in ERROR_KINDS:
+                return s
+    return None

@@ -128,7 +128,13 @@ export const api = {
   /** withRuns: setelah konfirmasi, riwayat run + evidence aplikasi ikut dihapus */
   deleteApp: (id: number, withRuns = false) => del(`/api/apps/${id}${withRuns ? "?with_runs=true" : ""}`),
   appModules: (id: number) =>
-    get<{ modules: string[]; explored: boolean; flows?: { id: number; name: string }[] }>(`/api/apps/${id}/modules`),
+    get<{
+      modules: string[];
+      explored: boolean;
+      flows?: { id: number; name: string }[];
+      /** layar per modul */
+      screens?: Record<string, { url: string; page_name: string }[]>;
+    }>(`/api/apps/${id}/modules`),
   // uji beban (performance)
   listPerfTests: (appId: number) => get<PerfTest[]>(`/api/apps/${appId}/perf-tests`),
   createPerfTest: (appId: number, body: PerfTestInput) => post<PerfTest>(`/api/apps/${appId}/perf-tests`, body),
@@ -190,8 +196,11 @@ export const api = {
   runState: (id: number) => get<Snapshot>(`/api/runs/${id}/state`),
   control: (id: number, body: ControlInput) => post<{ state: ControlState }>(`/api/runs/${id}/control`, body),
   resumeRun: (id: number) => post<Run>(`/api/runs/${id}/resume`),
+  acceptMap: (id: number) => post<Run>(`/api/runs/${id}/accept-map`),
   deleteRun: (id: number) => del(`/api/runs/${id}`),
   runMap: (id: number) => get<RunMap>(`/api/runs/${id}/map`),
+  updateScreenActions: (id: number, url: string, qaActions: string[]) =>
+    patch<RunMap>(`/api/runs/${id}/map/screen`, { url, qa_actions: qaActions }),
   getPlan: (id: number) => get<PlanResponse>(`/api/runs/${id}/plan`),
   savePlan: (id: number, cases: PlanCase[]) => request<PlanResponse>(`/api/runs/${id}/plan`, { method: "PUT", json: { cases } }),
 

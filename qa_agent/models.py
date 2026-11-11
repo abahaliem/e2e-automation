@@ -38,6 +38,8 @@ class Signal(BaseModel):
     status: int | None = None
     url: str | None = None
     method: str | None = None
+    screenshot: str | None = None  # bukti: screenshot saat error terlihat (path relatif folder run)
+    at: str | None = None  # waktu error terdeteksi
 
 
 class Observation(BaseModel):
@@ -47,6 +49,8 @@ class Observation(BaseModel):
     signals: list[Signal] = Field(default_factory=list)
     screenshot_annotated: bytes = b""
     fingerprint: str = ""
+    # PNG bukti per pesan sinyal (diambil tepat saat error terlihat); disimpan loop ke folder run
+    evidence: dict[str, bytes] = Field(default_factory=dict, exclude=True)
 
     @property
     def is_login_screen(self) -> bool:
@@ -142,6 +146,7 @@ class ScreenInfo(BaseModel):
     parent: str | None = None
     public: bool = False
     nav_path: list[dict] = Field(default_factory=list)  # Android: urutan tap dari awal aplikasi ke layar ini
+    qa_actions: list[str] = Field(default_factory=list)  # aksi/menu yang ditambahkan QA (terlewat oleh agent)
 
 
 class AppMap(BaseModel):

@@ -152,6 +152,8 @@ export interface Run {
   created_by?: string | null;
   review_first?: boolean;
   reuse_cases_from?: number | null;
+  /** hanya layar ini yang diuji (kosong = seluruh layar modul) */
+  screen_names?: string[];
   /** test case sudah disusun, menunggu QA review sebelum dijalankan */
   awaiting_review?: boolean;
   active: boolean;
@@ -171,6 +173,8 @@ export interface RunInput {
   review_first?: boolean;
   reuse_cases_from?: number | null;
   ask_before_finish?: boolean;
+  /** Satu modul: URL layar yang diuji saja */
+  screens?: string[];
   /** regresi: putar ulang skrip rekaman tanpa AI; heal = AI memperbaiki bila skrip gagal */
   replay_scripts?: boolean;
   heal?: boolean;
@@ -245,6 +249,8 @@ export interface CaseDetailResponse extends TestCase {
   /** Langkah yang benar-benar dijalankan (evidence). `steps` = langkah rencana. */
   log: CaseStep[];
   technical: string[];
+  /** Foto yang diambil tepat saat error muncul di aplikasi. */
+  errors?: { text: string; at: string | null; step_no: number; screenshot_url: string }[];
 }
 
 export interface ReviewInput {
@@ -321,6 +327,9 @@ export interface Snapshot {
   screens: number;
   /** Seluruh aplikasi: agent bertanya lanjutkan memetakan atau selesai */
   asking?: { screens: number; modules: number; new_screens?: number } | null;
+  /** Total lama dijeda (detik) dan awal jeda yang sedang berlangsung (epoch ms). */
+  paused_seconds?: number;
+  paused_since?: number | null;
 }
 
 export type RunEvent = { type: string; seq?: number; [key: string]: unknown };
@@ -369,6 +378,8 @@ export type MapScreen = {
   depth: number;
   forms: string[];
   actions: string[];
+  /** Aksi/menu yang ditambahkan QA karena terlewat oleh agent. */
+  qa_actions?: string[];
   screenshot_url: string | null;
 };
 export type RunMap = { modules: { name: string; screens: MapScreen[] }[]; screens: number };

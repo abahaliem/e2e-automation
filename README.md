@@ -50,6 +50,8 @@ Browser terbuka otomatis di `http://127.0.0.1:8787`. Bila port itu terpakai, por
 
    Semua intervensi tercatat di laporan sebagai langkah manual atau arahan QA. Jeda berlaku juga di antara test case, dan arahan tetap dibaca walau layar awal test case tidak bisa dibuka otomatis (agent mencoba sendiri dari layar saat ini).
 6. **Hasil run:** filter temuan, isi Status Final, Severity, dan Catatan reviewer. Unduh Excel, HTML, atau PDF, atau salin temuan sebagai laporan bug (Jira).
+
+**Bukti error otomatis:** error yang muncul tiba-tiba saat run (popup/toast/alert error, termasuk yang hilang sendiri dalam sepersekian detik, crash aplikasi Android, dialog "App keeps stopping", error server 5xx) langsung difoto saat muncul. Fotonya tampil di panel **Error terdeteksi** di layar live, di detail test case (**Bukti error**), dan menjadi gambar utama Temuan di PDF serta tautan **Bukti error** di Excel, lengkap dengan teks pesan dan jamnya.
 7. **Regresi:** di halaman Hasil, **Ulang dengan test case sama** menjalankan lagi test case yang persis sama (tanpa AI menyusun ulang), supaya hasil antar run bisa dibandingkan. Test case yang **Pass** direkam sebagai skrip dan saat regresi **diputar ulang tanpa AI** (lebih cepat, hemat, konsisten). Bila tombol berubah atau layar akhir berbeda, AI memperbaiki skripnya (self-healing); bisa dimatikan, test case lalu menjadi Perlu Review.
 8. **Riwayat run:** run lama bisa dihapus (ikon tempat sampah) beserta screenshot dan dokumennya supaya disk dan database tidak penuh. Aplikasi juga bisa dihapus beserta seluruh riwayat run-nya (dengan konfirmasi).
 

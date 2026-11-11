@@ -12,7 +12,7 @@ from qa_agent.evidence import RunStore
 from qa_agent.models import QaTestCase, StepRecord
 from qa_agent.report.build import apply_review
 from qa_agent.report.excel import TYPE_LABEL
-from qa_agent.report.humanize import humanize, signal_text
+from qa_agent.report.humanize import ERROR_KINDS, error_evidence, humanize, signal_text
 
 _ENV = Environment(loader=FileSystemLoader(Path(__file__).parent / "templates"),
                    autoescape=select_autoescape(["html", "j2"]))
@@ -71,17 +71,23 @@ def _finding(n: int, tc: QaTestCase, records: list[StepRecord], root: Path) -> d
     technical: list[str] = []
     for r in records:
         for s in r.signals:
-            if s.kind in ("http_error", "page_error", "console_error") and signal_text(s) not in technical:
+            if s.kind in ERROR_KINDS and signal_text(s) not in technical:
                 technical.append(signal_text(s))
     shot = next((r for r in reversed(records) if r.screenshot), None)
     action = next((r for r in reversed(records) if r.action not in NON_REPRO), None)
     caption = f"Setelah: {humanize(action.action, action.element, action.value)}" if action else ""
+    proof = error_evidence(records)
+    image = _image(root, proof.screenshot) if proof else None
+    if image:  # foto tepat saat error muncul lebih kuat daripada layar terakhir
+        caption = f"Bukti error saat muncul{' (' + proof.at[11:19] + ')' if proof.at else ''}: {signal_text(proof)}"[:220]
+    else:
+        image = _image(root, shot.screenshot if shot else None)
     status = tc.effective_status or ""
     return {
         "code": f"BUG-{n:03d}", "tc_id": tc.id, "title": tc.title, "status": status,
         "badge": f"{status}, {tc.severity}" if tc.severity and status == "Fail" else status,
         "repro": repro, "expected": tc.expected, "actual": tc.actual, "technical": technical[:4],
-        "note": tc.reviewer_note, "image": _image(root, shot.screenshot if shot else None),
+        "note": tc.reviewer_note, "image": image,
         "caption": caption,
     }
 

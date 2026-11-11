@@ -16,7 +16,7 @@ def _open(data: bytes) -> Image.Image:
 
 def _png(img: Image.Image) -> bytes:
     buf = BytesIO()
-    img.save(buf, "PNG")
+    img.save(buf, "PNG", compress_level=1)  # cepat di laptop lemah; file sedikit lebih besar
     return buf.getvalue()
 
 

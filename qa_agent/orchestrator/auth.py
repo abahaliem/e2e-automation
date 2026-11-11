@@ -51,7 +51,15 @@ class AuthManager:
         self.driver.save_auth_state(self.state_path)
 
     def start_authenticated(self, url: str) -> None:
-        self.driver.new_session(self.state_path)
+        # Sesi yang masih hidup dipakai lagi: tidak menutup-buka aplikasi / browser di setiap test case.
+        # Sesi baru hanya bila belum ada, aplikasi crash/tertutup, atau halaman sudah ditutup.
+        alive = getattr(self.driver, "session_alive", None)
+        if alive is None or not alive():
+            self.driver.new_session(self.state_path)
+        else:
+            reset = getattr(self.driver, "reset_signals", None)
+            if reset is not None:
+                reset()  # error dari test case sebelumnya tidak boleh terbawa ke test case ini
         self.driver.goto(url)
         if self.driver.observe().is_login_screen:
             self.login()

@@ -304,5 +304,8 @@ def test_transient_error_popup_after_tap_is_reported():
     obs = d.observe()
     d.execute(Action(action="click", element=4), find(obs, "MASUK"))
     after = d.observe()
-    assert any(s.kind == "ui_error" and "gagal memuat order" in s.message for s in after.signals)
+    sig = next(s for s in after.signals if s.kind == "ui_error" and "gagal memuat order" in s.message)
+    assert sig.at  # waktu terdeteksi
+    # bukti difoto saat popup masih tampil (bukan layar setelah popup hilang)
+    assert after.evidence[sig.message].startswith(b"\x89PNG")
     assert not any("gagal memuat order" in s.message for s in d.observe().signals)  # dilaporkan sekali

@@ -45,12 +45,26 @@ def test_takeover_inputs_then_release_ai_gets_note(tmp_path):
     assert box["out"].final == "done"
     steps = store.read_steps()
     manual = [s for s in steps if s.actor == "manual"]
-    assert [s.value for s in manual] == ["Klik di (0.42, 0.31)", "Ketik 7 karakter"]
+    assert manual[0].value.startswith("Klik di area (0.42, 0.31)") and manual[1].value == "Ketik 7 karakter"
     assert all(s.action == "manual" and s.screenshot for s in manual)
     assert "s3cret!" not in (tmp_path / "run" / "steps.jsonl").read_text(encoding="utf-8")
     text = llm.calls[0][1][0].text
-    assert "QA melakukan langkah manual" in text and "Klik di (0.42, 0.31)" in text
+    assert "QA melakukan langkah manual" in text and "Klik di area (0.42, 0.31)" in text
     assert any(e["type"] == "step.done" and e["actor"] == "manual" for e in events)
+
+
+def test_manual_click_named_by_element_and_screen_change():
+    from qa_agent.agent.loop import describe_manual, element_at
+    from qa_agent.models import Element, Observation
+
+    menu = Element(index=1, role="link", name="GGC Report  Mapping", bbox=(40, 290, 200, 20))
+    sidebar = Element(index=2, role="navigation", name="Menu", bbox=(0, 0, 260, 800))
+    obs = Observation(url="https://app.test/", title="t", location="Dashboard", elements=[sidebar, menu], fingerprint="a")
+    size = {"width": 1000, "height": 800}
+    hit = element_at(obs, {"kind": "click", "x": 0.1, "y": 0.375}, size)  # (100, 300) di dalam menu & sidebar
+    assert hit is menu  # elemen terkecil yang memuat titik
+    assert describe_manual({"kind": "click"}, Masker([]), hit) == "Klik 'GGC Report Mapping'"
+    assert element_at(obs, {"kind": "click", "x": 0.9, "y": 0.9}, size) is None
 
 
 def test_manual_click_bypasses_keyword_guard(tmp_path):

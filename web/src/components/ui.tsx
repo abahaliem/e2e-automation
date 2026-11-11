@@ -22,7 +22,8 @@ export const Button = forwardRef<
       ref={ref}
       type={type}
       className={cn(
-        "inline-flex items-center justify-center gap-2 rounded-lg transition-colors active:translate-y-px",
+        // teks tombol tidak pernah terlipat dua baris; tombol tidak ikut menyempit di samping teks panjang
+        "inline-flex shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-lg transition-colors active:translate-y-px",
         VARIANTS[variant],
         SIZES[size],
         className,

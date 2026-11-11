@@ -76,7 +76,7 @@ def build_runtime(cfg: Config, store: RunStore, project_dir: Path, *, environmen
         from qa_agent.drivers.adb import Adb
         from qa_agent.drivers.android import AndroidDriver
 
-        driver = AndroidDriver(Adb(serial=device_serial), cfg.target.package)
+        driver = AndroidDriver(Adb(serial=device_serial, fast=True), cfg.target.package)
     else:
         driver = WebDriver(cfg.target.url, headless=cfg.browser.headless, viewport=cfg.browser.size,
                            request_filter=guard.should_block_request if guard.production else None,
