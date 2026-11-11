@@ -112,6 +112,16 @@ class RunStore:
         (self.screenshots_dir / f"{name}.png").write_bytes(data)
         return f"screenshots/{name}.png"
 
+    def attach_evidence(self, prefix: str, signals: list, evidence: dict[str, bytes]) -> None:
+        """Simpan screenshot bukti error (diambil driver tepat saat error terlihat) dan tautkan ke sinyalnya."""
+        n = 0
+        for s in signals:
+            png = evidence.get(s.message)
+            if not png or s.screenshot:
+                continue
+            n += 1
+            s.screenshot = self.save_screenshot(f"{prefix}_error-{n}", png)
+
     def append_step(self, record: StepRecord) -> None:
         with self.steps_path.open("a", encoding="utf-8") as f:
             f.write(record.model_dump_json() + "\n")

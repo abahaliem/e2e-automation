@@ -112,6 +112,8 @@ class ScriptPlayer:
                 result: str, guard: str = "allowed") -> None:
         shot = self.store.save_screenshot(f"{tc_id}_step-{n:02d}", self.driver.screenshot(
             highlight=element if element is not None and step.action in ("type", "select") else None))
+        if obs.evidence:
+            self.store.attach_evidence(f"{tc_id}_step-{n:02d}", obs.signals, obs.evidence)
         value = self.masker.mask(step.value)
         description = (humanize("manual", None, "Langkah manual QA (skrip)") if step.event is not None
                        else humanize(step.action or "", step.element, value))

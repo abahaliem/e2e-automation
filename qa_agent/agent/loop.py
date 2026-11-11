@@ -207,6 +207,8 @@ class AgentLoop:
                 obs = self.driver.observe()
                 notes.append("Sesi login kedaluwarsa; sistem sudah login ulang dan kembali ke halaman terakhir. Lanjutkan tujuan.")
 
+            if obs.evidence:
+                self.store.attach_evidence(f"{tc_id}_step-{step_no + 1:02d}", obs.signals, obs.evidence)
             for s in obs.signals:
                 self._emit({"type": "signal", "tc_id": tc_id, "signal": s.model_dump()})
             signals.extend(obs.signals)

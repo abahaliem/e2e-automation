@@ -15,7 +15,7 @@ from pydantic import ValidationError
 
 from qa_agent.evidence import module_abbr
 from qa_agent.models import STATUSES, TC_TYPES, AppMap, QaTestCase, RunMeta, StepRecord
-from qa_agent.report.humanize import humanize, signal_text
+from qa_agent.report.humanize import ERROR_KINDS, error_evidence, humanize, signal_text
 
 # Mockup 09 (disepakati): 12 kolom
 TC_HEADERS = ["TC ID", "Modul", "Skenario", "Tipe", "Prioritas", "Langkah", "Expected Result", "Actual Result",
@@ -578,16 +578,17 @@ def _write_findings(ws: Worksheet, cases: list[QaTestCase], steps: list[StepReco
         signals: list[str] = []
         for r in records:
             for s in r.signals:
-                if s.kind in ("http_error", "page_error", "console_error") and signal_text(s) not in signals:
+                if s.kind in ERROR_KINDS and signal_text(s) not in signals:
                     signals.append(signal_text(s))
         _append(ws, [f"BUG-{n:03d}", tc.id, tc.title, tc.severity or "", tc.effective_status, steps_text(repro),
                    tc.expected, tc.actual, "\n".join(signals[:5]), None])
         row = ws.max_row
         for cell in ws[row]:
             cell.alignment = WRAP
-        shot = _last_screenshot(records)
+        proof = error_evidence(records)
+        shot = proof.screenshot if proof else _last_screenshot(records)
         if shot:
-            cell = ws.cell(row, len(FINDING_HEADERS), "Lihat screenshot")
+            cell = ws.cell(row, len(FINDING_HEADERS), "Bukti error" if proof else "Lihat screenshot")
             cell.hyperlink = shot
             cell.style = "Hyperlink"
 

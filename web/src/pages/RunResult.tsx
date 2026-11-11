@@ -338,6 +338,24 @@ function CaseDetailPanel({ runId, tcId, run }: { runId: number; tcId: string; ru
               )}
             </dl>
           </div>
+          {(d.errors?.length ?? 0) > 0 && (
+            <div className="border-b border-ink-700 p-5">
+              <div className="mb-3 text-sm font-medium text-fail">Bukti error (difoto saat muncul)</div>
+              <div className="grid grid-cols-2 gap-2.5">
+                {d.errors!.map((e) => (
+                  <figure key={e.screenshot_url}>
+                    <a href={e.screenshot_url} target="_blank" rel="noreferrer" className="block aspect-[4/3] overflow-hidden rounded-md border border-fail/50 bg-white">
+                      <img src={e.screenshot_url} alt={`Bukti error: ${e.text}`} className="h-full w-full object-cover object-top" loading="lazy" />
+                    </a>
+                    <figcaption className="mt-1 line-clamp-3 text-xs text-fg-muted">
+                      {e.at ? `${e.at.slice(11, 19)} · ` : ""}
+                      {e.text}
+                    </figcaption>
+                  </figure>
+                ))}
+              </div>
+            </div>
+          )}
           {evidence.length > 0 && (
             <div className="border-b border-ink-700 p-5">
               <div className="mb-3 text-sm font-medium">Evidence</div>

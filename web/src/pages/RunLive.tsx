@@ -15,6 +15,7 @@
   Robot,
   Stop,
   User,
+  Warning,
   WarningCircle,
   XCircle,
 } from "@phosphor-icons/react";
@@ -28,7 +29,7 @@ import { Alert, Button } from "@/components/ui";
 import { ApiError, api } from "@/lib/api";
 import { cn } from "@/lib/cn";
 import { duration, scopeLabel } from "@/lib/format";
-import { REVIEW_NOTE, type ControlInput, type Snapshot, type Status, type StepEvent } from "@/lib/types";
+import { REVIEW_NOTE, type ControlInput, type RunEvent, type Snapshot, type Status, type StepEvent } from "@/lib/types";
 import { useRunStream } from "@/lib/ws";
 
 function useNow(intervalMs = 1000): Date {
@@ -75,11 +76,28 @@ function CaseIcon({ status, current }: { status: Status | null; current: boolean
   return <Circle className="mt-px text-lg text-fg-dim" />;
 }
 
+type LiveError = { message: string; text: string; screenshot: string | null; at: string | null };
+const ERROR_LABEL: Record<string, string> = { ui_error: "Pesan error di layar", page_error: "Error aplikasi", http_error: "Error server" };
+
+/** Error aplikasi yang terdeteksi selama run (event "signal"), beserta foto bukti saat error muncul. */
+export function errorsFrom(events: RunEvent[], tcId: string | null): LiveError[] {
+  const out: LiveError[] = [];
+  for (const e of events) {
+    if (e.type !== "signal" || (tcId && e.tc_id !== tcId)) continue;
+    const s = e.signal as { kind: string; message: string; status?: number | null; url?: string | null; screenshot?: string | null; at?: string | null };
+    if (!s || !(s.kind in ERROR_LABEL) || (s.kind === "http_error" && (s.status ?? 0) < 500)) continue;
+    if (out.some((o) => o.message === s.message)) continue;
+    const detail = s.kind === "http_error" ? `HTTP ${s.status} ${s.url ?? ""}`.trim() : s.message;
+    out.push({ message: s.message, text: `${ERROR_LABEL[s.kind]}: ${detail}`, screenshot: s.screenshot ?? null, at: s.at ?? null });
+  }
+  return out;
+}
+
 export function RunLivePage() {
   const runId = Number(useParams().runId);
   const qc = useQueryClient();
   const run = useQuery({ queryKey: ["run", runId], queryFn: () => api.getRun(runId), refetchInterval: 5000 });
-  const { snapshot, steps, frame, connected } = useRunStream(Number.isFinite(runId) ? runId : null);
+  const { snapshot, steps, frame, connected, events } = useRunStream(Number.isFinite(runId) ? runId : null);
   const [error, setError] = useState<string | null>(null);
   const [confirmedKey, setConfirmedKey] = useState<string | null>(null);
   const now = useNow();
@@ -96,6 +114,7 @@ export function RunLivePage() {
     () => steps.filter((s) => (currentTc ? s.tc_id === currentTc : true)).slice(-12),
     [steps, currentTc],
   );
+  const errorEvents = useMemo(() => errorsFrom(events, currentTc), [events, currentTc]);
   const planned = snapshot?.planned ?? null;
   const lastStep = tcSteps[tcSteps.length - 1];
   const overlay: Overlay =
@@ -375,6 +394,30 @@ export function RunLivePage() {
               {control === "takeover" ? "Klik langsung di layar untuk mengendalikan browser" : "Ambil alih untuk mengklik langsung di layar ini"}
             </div>
           </div>
+
+          {errorEvents.length > 0 && (
+            <div role="alert" aria-label="Error terdeteksi" className="mt-2 flex flex-col gap-2 rounded-lg border border-fail/40 bg-fail/5 p-3">
+              <div className="flex items-center gap-1.5 text-sm font-medium text-fail">
+                <Warning weight="fill" />
+                Error terdeteksi{currentTc ? " di test case ini" : ""} ({errorEvents.length})
+              </div>
+              <div className="flex flex-col gap-2">
+                {errorEvents.slice(-3).map((e, i) => (
+                  <div key={i} className="flex items-start gap-3 text-xs">
+                    {e.screenshot ? (
+                      <a href={api.fileUrl(runId, e.screenshot)} target="_blank" rel="noreferrer" className="block h-14 w-24 shrink-0 overflow-hidden rounded border border-fail/50 bg-white">
+                        <img src={api.fileUrl(runId, e.screenshot)} alt={`Bukti error: ${e.message}`} className="h-full w-full object-cover object-top" />
+                      </a>
+                    ) : null}
+                    <span className="min-w-0">
+                      {e.at && <span className="font-mono text-fg-dim">{e.at.slice(11, 19)} </span>}
+                      {e.text}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           {tcSteps.some((s) => s.screenshot) && (
             <div className="mt-2 flex flex-col gap-2">

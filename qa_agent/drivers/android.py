@@ -20,6 +20,7 @@ from qa_agent import imaging
 from qa_agent.drivers.adb import AdbError
 from qa_agent.drivers.android_dom import parse_ui, screen_key
 from qa_agent.drivers.base import DriverCrashed, missing_credential
+from qa_agent.evidence import now_iso
 from qa_agent.models import Action, ActionResult, Element, Observation, Signal
 from qa_agent.orchestrator.fingerprint import fingerprint
 
@@ -67,6 +68,7 @@ class AndroidDriver:
         self.back_probe = True  # explorer boleh menekan Kembali untuk menutup popup/form yang menutupi layar lain
         self._recording: list[dict] | None = None
         self._transient: list[str] = []  # teks error dari popup/snackbar yang tampil sesaat setelah tap
+        self._transient_shots: dict[str, bytes] = {}  # screenshot tepat saat popup error itu terbaca
         self.frame_workers = 2  # screencap HP lambat (~0,3-0,8 dtk): dua pengambil bergantian supaya live lebih mulus
         self.blocked_requests: list[str] = []
         self._size = (1080, 1920)
@@ -222,12 +224,17 @@ class AndroidDriver:
         elements = self._dump()
         location = self._locate(elements)
         png = self.screenshot()
-        signals = self._signals(elements)
+        evidence: dict[str, bytes] = {}
+        signals = self._signals(elements, evidence)
         if not elements and self._dump_error:
             signals.append(Signal(kind="ui_error", message=f"Elemen layar tidak terbaca: {self._dump_error[:200]}"))
+        for s in signals:  # error yang masih tampil (crash dialog dll.): bukti = layar saat ini
+            if (s.kind in ("ui_error", "page_error") and s.message not in evidence and png
+                    and not s.message.startswith("Pesan muncul sesaat")):
+                evidence[s.message] = png
         title = next((e.name for e in elements if e.role == "text"), location.rsplit("/", 1)[-1].split("#")[0])
         return Observation(
-            location=location, title=title, elements=elements, signals=signals,
+            location=location, title=title, elements=elements, signals=signals, evidence=evidence,
             screenshot_annotated=_shrink_png(imaging.annotate(png, elements), AI_IMAGE_WIDTH),
             fingerprint=fingerprint(location, elements),
         )
@@ -239,19 +246,31 @@ class AndroidDriver:
             elements = parse_ui(self.adb.dump_ui(), self.max_elements, self._size)
         except Exception:
             return
+        shot: bytes | None = None
         for el in elements:
             text = (el.name or "").strip()
             if text and _ERROR_TEXT.search(text) and text not in self._transient:
                 self._transient.append(text)
+                if shot is None:  # foto sekali, selagi popup masih tampil
+                    try:
+                        shot = self.adb.screencap()
+                    except Exception:
+                        shot = b""
+                if shot:
+                    self._transient_shots[text] = shot
 
-    def _signals(self, elements: list[Element]) -> list[Signal]:
+    def _signals(self, elements: list[Element], evidence: dict[str, bytes] | None = None) -> list[Signal]:
         signals: list[Signal] = []
         if self._transient:
             visible = {(e.name or "").strip() for e in elements}
             for text in self._transient:
                 if text not in visible:  # yang masih tampil sudah terlihat agent di daftar elemen
-                    signals.append(Signal(kind="ui_error", message=f"Pesan muncul sesaat lalu hilang: {text}"[:300]))
+                    message = f"Pesan muncul sesaat lalu hilang: {text}"[:300]
+                    signals.append(Signal(kind="ui_error", message=message, at=now_iso()))
+                    if evidence is not None and text in self._transient_shots:
+                        evidence[message] = self._transient_shots[text]
             self._transient = []
+            self._transient_shots = {}
         if self._alive and not self._crash_reported and not self.adb.pidof(self.package):
             self._crash_reported = True
             log = self.adb.crash_log(self.package)

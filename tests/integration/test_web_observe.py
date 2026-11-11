@@ -79,6 +79,40 @@ def test_ui_error_signal(driver):
     assert any(s.kind == "http_error" and s.status == 400 for s in obs.signals)
 
 
+def test_transient_error_toast_photographed_when_it_appears(driver):
+    """Toast error yang hilang sebelum agent melihat layar tetap tercatat, lengkap dengan foto saat muncul."""
+    driver.goto("/login")
+    driver.observe()
+    driver.page.evaluate("""() => {
+      const t = document.createElement('div');
+      t.className = 'toast toast-error';
+      t.textContent = 'Gagal menyimpan data: server error';
+      t.style.cssText = 'position:fixed;top:10px;right:10px;padding:12px;background:#c00;color:#fff';
+      document.body.appendChild(t);
+      setTimeout(() => t.remove(), 600);
+    }""")
+    for _ in range(24):  # seperti saat menunggu jawaban AI: driver dipompa tiap 50 ms
+        driver.pump(50)
+    assert driver.page.locator(".toast").count() == 0  # toast sudah hilang
+    obs = driver.observe()
+    sig = next(s for s in obs.signals if s.kind == "ui_error" and "Gagal menyimpan data" in s.message)
+    assert sig.message.startswith("Pesan muncul sesaat lalu hilang") and sig.at
+    assert obs.evidence[sig.message][:8] == b"\x89PNG\r\n\x1a\n"
+    assert not any("Gagal menyimpan" in s.message for s in driver.observe().signals)  # dilaporkan sekali
+
+
+def test_visible_ui_error_has_evidence(driver):
+    login_direct(driver)
+    driver.goto("/users/new")
+    driver.observe()
+    driver.page.fill("#age", "3")
+    driver.page.click("text=Simpan")
+    obs = driver.observe()
+    sig = next(s for s in obs.signals if s.kind == "ui_error" and "Nama wajib diisi" in s.message)
+    assert obs.evidence[sig.message][:8] == b"\x89PNG\r\n\x1a\n"
+    assert sum(1 for s in obs.signals if "Nama wajib diisi" in s.message) == 1  # tidak dobel dari pemantau
+
+
 def test_auth_state_roundtrip(driver, tmp_path):
     login_direct(driver)
     state = tmp_path / "auth" / "state.json"

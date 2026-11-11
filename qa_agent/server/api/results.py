@@ -58,10 +58,14 @@ def case_detail(run_id: int, tc_id: str, request: Request) -> dict:
     tc = next((c for c in _cases(rs) if c.id == tc_id), None)
     if tc is None:
         raise deps.not_found("Test case")
-    log, technical = [], []
+    log, technical, errors = [], [], []
     for s in rs.read_steps():
         if s.tc_id != tc_id:
             continue
+        for sig in s.signals:  # foto tepat saat error muncul
+            if sig.screenshot and not any(e["screenshot_url"].endswith(sig.screenshot) for e in errors):
+                errors.append({"text": signal_text(sig), "at": sig.at, "step_no": s.step_no,
+                               "screenshot_url": f"/api/runs/{run_id}/files/{sig.screenshot}"})
         log.append({
             "step_no": s.step_no, "action": s.action, "actor": s.actor,
             "text": humanize(s.action, s.element, s.value), "result": s.result, "guard": s.guard,
@@ -73,7 +77,7 @@ def case_detail(run_id: int, tc_id: str, request: Request) -> dict:
             if text not in technical:
                 technical.append(text)
     # "steps" = langkah rencana test case; "log" = langkah yang benar-benar dijalankan (evidence)
-    return {**_case_out(tc), "log": log, "technical": technical}
+    return {**_case_out(tc), "log": log, "technical": technical, "errors": errors}
 
 
 @router.patch("/runs/{run_id}/cases/{tc_id}")

@@ -245,6 +245,8 @@ export interface CaseDetailResponse extends TestCase {
   /** Langkah yang benar-benar dijalankan (evidence). `steps` = langkah rencana. */
   log: CaseStep[];
   technical: string[];
+  /** Foto yang diambil tepat saat error muncul di aplikasi. */
+  errors?: { text: string; at: string | null; step_no: number; screenshot_url: string }[];
 }
 
 export interface ReviewInput {

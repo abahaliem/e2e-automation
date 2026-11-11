@@ -55,6 +55,23 @@ describe("Run berjalan", () => {
     expect(screen.getAllByText("Isi field 'Nama'").length).toBeGreaterThan(0);
   });
 
+  it("error yang terdeteksi tampil dengan foto bukti saat muncul", async () => {
+    const snap = snapshot();
+    vi.mocked(useRunStream).mockReturnValue({
+      snapshot: snap, steps: snap.steps, frame: null, connected: true,
+      events: [
+        { type: "signal", tc_id: "TC-PEN-002", signal: { kind: "ui_error", message: "Pesan muncul sesaat lalu hilang: Gagal simpan", screenshot: "screenshots/TC-PEN-002_step-02_error-1.png", at: "2026-11-11T10:25:10" } },
+        { type: "signal", tc_id: "TC-PEN-002", signal: { kind: "http_error", message: "HTTP 404", status: 404, url: "http://hr/x" } },
+        { type: "signal", tc_id: "TC-PEN-001", signal: { kind: "page_error", message: "dari test case lain" } },
+      ],
+    });
+    renderWithProviders(<RunLivePage />, { path: "/runs/9", route: "/runs/:runId" });
+    const panel = await screen.findByRole("alert", { name: "Error terdeteksi" });
+    expect(panel).toHaveTextContent("Error terdeteksi di test case ini (1)");
+    expect(panel).toHaveTextContent("10:25:10 Pesan error di layar: Pesan muncul sesaat lalu hilang: Gagal simpan");
+    expect(screen.getByRole("img", { name: /Bukti error/ })).toHaveAttribute("src", expect.stringContaining("TC-PEN-002_step-02_error-1.png"));
+  });
+
   it("Jeda memanggil kontrol", async () => {
     setStream(snapshot());
     renderWithProviders(<RunLivePage />, { path: "/runs/9", route: "/runs/:runId" });
