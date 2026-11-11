@@ -71,6 +71,7 @@ class RunRequest:
     replay_scripts: bool = True  # regresi: putar ulang skrip rekaman run sumber tanpa AI
     heal: bool = True  # skrip gagal → AI melanjutkan test case lalu merekam skrip baru
     run_setup: bool = True  # jalankan Persiapan otomatis (HTTP) aplikasi
+    screens: list[str] | None = None  # Satu modul: hanya layar ini (URL) yang diuji; None = semua layar modul
 
 
 def flow_app_map(app_map: AppMap, flow_name: str) -> AppMap:
@@ -136,6 +137,13 @@ class RunManager:
         app_map = self._latest_app_map(app_id)
         return app_map.modules() if app_map else []
 
+    def module_screens(self, app_id: int) -> dict[str, list[dict]]:
+        """Layar per modul (untuk memilih layar tertentu saja saat menguji satu modul)."""
+        app_map = self._latest_app_map(app_id)
+        if app_map is None:
+            return {}
+        return {m: [{"url": s.url, "page_name": s.page_name} for s in app_map.screens_for(m)] for m in app_map.modules()}
+
     def _latest_app_map(self, app_id: int) -> AppMap | None:
         run = self.store.latest_completed_explore(app_id)
         if run is None:
@@ -193,6 +201,14 @@ class RunManager:
                 raise ValueError(f"Modul '{(req.module or '').strip()}' tidak ditemukan. "
                                  f"Modul yang tersedia: {', '.join(app_map.modules())}")
             options["source_run"] = explore.id
+            if req.screens and module is not None and flow is None and req.reuse_cases_from is None:
+                known = {s.url: s.page_name for s in app_map.screens_for(module)}
+                picked = [u for u in dict.fromkeys(req.screens) if u in known]
+                if not picked:
+                    raise ValueError("screens::Pilih minimal satu layar dari modul ini")
+                if len(picked) < len(known):  # semua layar dipilih = sama dengan menguji seluruh modul
+                    options["screens"] = picked
+                    options["screen_names"] = [known[u] for u in picked]
             # PRD yang diunggah saat explore dipakai bila run modul tidak mengunggah PRD baru
             prd = req.prd_text or explore.options.get("prd_text")
             if flow is not None:  # modul kustom: alur yang ditulis QA menjadi kebutuhan utama
@@ -544,10 +560,14 @@ class RunManager:
         if row.options.get("flow_id"):  # modul kustom (alur bisnis): semua layar aplikasi
             app_map = flow_app_map(app_map, row.module or "Alur")
         module = app_map.find_module(row.module or "") or (row.module or "")
-        rs.write_app_map(app_map)
         register = getattr(rt.driver, "register_paths", None)
-        if register is not None:  # Android: jalur tap ke setiap layar hasil explore
+        if register is not None:  # Android: jalur tap ke setiap layar hasil explore (semua layar, untuk navigasi)
             register({s.url: s.nav_path for s in app_map.screens})
+        picked = set(row.options.get("screens") or [])
+        if picked:  # QA memilih layar tertentu saja dari modul ini: AI menyusun test case hanya untuk layar itu
+            app_map = AppMap(target=app_map.target,
+                             screens=[s for s in app_map.screens if s.module != module or s.url in picked])
+        rs.write_app_map(app_map)
         cases = rs.read_testcases() if resume else []
         if not cases:
             cases = self._reused_cases(row) or make_planner(rt).plan(app_map, module, row.options.get("prd_text"))

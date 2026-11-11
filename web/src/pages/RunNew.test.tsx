@@ -148,6 +148,24 @@ describe("Hasil penjelajahan", () => {
     renderWithProviders(<RunNewPage />, { path: "/runs/new?app=3&module=Pengguna", route: "/runs/new" });
     await waitFor(() => expect(screen.getByLabelText("Modul")).toHaveValue("Pengguna"));
   });
+
+  it("Satu modul: QA bisa memilih layar tertentu saja (dari tombol Uji layar ini saja)", async () => {
+    mocked.listApps.mockResolvedValue([app]);
+    mocked.appModules.mockResolvedValue({
+      modules: ["Beranda"], explored: true,
+      screens: { Beranda: [{ url: "u1", page_name: "Dashboard Order" }, { url: "u2", page_name: "Menu Navigasi Samping" }] },
+    });
+    mocked.createRun.mockResolvedValue({ id: 60 } as never);
+    renderWithProviders(<RunNewPage />, { path: "/runs/new?app=3&module=Beranda&screen=u2", route: "/runs/new" });
+    const user = userEvent.setup();
+    const nav = await screen.findByRole("checkbox", { name: "Menu Navigasi Samping" });
+    await waitFor(() => expect(nav).toBeChecked());
+    expect(screen.getByRole("checkbox", { name: "Dashboard Order" })).not.toBeChecked();
+    expect(screen.getByText("1 dari 2 layar")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /Mulai run/ }));
+    await waitFor(() => expect(mocked.createRun).toHaveBeenCalled());
+    expect(mocked.createRun.mock.calls[0][0]).toMatchObject({ mode: "deep", module: "Beranda", screens: ["u2"] });
+  });
 });
 
 describe("Alur bisnis di Run baru", () => {

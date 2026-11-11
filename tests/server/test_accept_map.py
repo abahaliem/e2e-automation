@@ -58,6 +58,26 @@ def test_qa_adds_missing_menu_and_planner_sees_it(ctx):
     assert client.patch(f"/api/runs/{run_id}/map/screen", json={"url": "/tidak-ada", "qa_actions": []}).status_code == 404
 
 
+def test_test_selected_screens_only(ctx):
+    """Satu modul, tapi QA memilih layar tertentu saja supaya pengujian lebih cepat."""
+    client, app, a, make = ctx
+    run_id = make(screens=2, status="completed")
+    store = app.state.store
+    store.create_profile(name="P", provider="openai_compatible", base_url="http://x/v1", model="m")
+    app.state.manager._enqueue = lambda rid: None  # tidak benar-benar menjalankan browser
+    mods = client.get(f"/api/apps/{a.id}/modules").json()
+    assert [s["page_name"] for s in mods["screens"]["Beranda"]] == ["Layar 0", "Layar 1"]
+    r = client.post("/api/runs", json={"app_id": a.id, "mode": "deep", "module": "Beranda", "screens": ["/s1"]})
+    assert r.status_code == 201, r.text
+    assert r.json()["screen_names"] == ["Layar 1"]
+    assert store.get_run(r.json()["id"]).options["screens"] == ["/s1"]
+    every = client.post("/api/runs", json={"app_id": a.id, "mode": "deep", "module": "Beranda", "screens": ["/s0", "/s1"]})
+    assert every.json()["screen_names"] == []  # semua layar = seluruh modul
+    bad = client.post("/api/runs", json={"app_id": a.id, "mode": "deep", "module": "Beranda", "screens": ["/lain"]})
+    assert bad.status_code == 422
+    assert run_id
+
+
 def test_accept_map_refused_without_screens_or_while_running(ctx):
     client, app, a, make = ctx
     empty = make(screens=0)

@@ -128,7 +128,13 @@ export const api = {
   /** withRuns: setelah konfirmasi, riwayat run + evidence aplikasi ikut dihapus */
   deleteApp: (id: number, withRuns = false) => del(`/api/apps/${id}${withRuns ? "?with_runs=true" : ""}`),
   appModules: (id: number) =>
-    get<{ modules: string[]; explored: boolean; flows?: { id: number; name: string }[] }>(`/api/apps/${id}/modules`),
+    get<{
+      modules: string[];
+      explored: boolean;
+      flows?: { id: number; name: string }[];
+      /** layar per modul */
+      screens?: Record<string, { url: string; page_name: string }[]>;
+    }>(`/api/apps/${id}/modules`),
   // uji beban (performance)
   listPerfTests: (appId: number) => get<PerfTest[]>(`/api/apps/${appId}/perf-tests`),
   createPerfTest: (appId: number, body: PerfTestInput) => post<PerfTest>(`/api/apps/${appId}/perf-tests`, body),

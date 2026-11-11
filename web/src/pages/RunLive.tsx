@@ -171,7 +171,10 @@ export function RunLivePage() {
         <div className="flex min-w-0 items-center gap-2 text-sm">
           <span className="truncate text-fg-muted">{r?.app_name ?? "..."}</span>
           <CaretRight className="text-fg-dim" />
-          <span className="truncate font-medium">{r ? (r.mode === "explore" ? "Jelajahi seluruh aplikasi" : `Uji modul ${r.module}`) : ""}</span>
+          <span className="truncate font-medium">
+            {r ? (r.mode === "explore" ? "Jelajahi seluruh aplikasi" : `Uji modul ${r.module}`) : ""}
+            {r?.screen_names?.length ? <span className="font-normal text-fg-muted"> · layar: {r.screen_names.join(", ")}</span> : null}
+          </span>
         </div>
         <span className={cn("inline-flex items-center gap-2 rounded-md border px-2.5 py-1 text-xs font-medium", PILL_STYLE[pill.tone])}>
           <span className={cn("h-1.5 w-1.5 rounded-full bg-current", pill.tone === "accent" && "animate-pulse")} />

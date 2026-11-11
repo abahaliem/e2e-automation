@@ -220,18 +220,17 @@ function ScreenDialog({
               {!s.actions.length && !qaActions.length && <li className="text-fg-muted">Belum ada aksi tercatat</li>}
             </ul>
             {editable && (
-              <form onSubmit={add} className="mt-2 flex gap-2">
-                <Input aria-label="Tambah aksi" value={draft} placeholder="mis. Customer Information" onChange={(e) => setDraft(e.target.value)} />
-                <Button type="submit" size="sm" disabled={!draft.trim() || save.isPending}>
-                  <Plus />
-                  Tambah
-                </Button>
+              <form onSubmit={add} className="mt-3 flex flex-col gap-1.5">
+                <div className="flex items-center gap-2">
+                  <Input aria-label="Tambah aksi" className="min-w-0 flex-1" value={draft} placeholder="mis. Customer Information"
+                    onChange={(e) => setDraft(e.target.value)} />
+                  <Button type="submit" variant="primary" className="h-10!" disabled={!draft.trim() || save.isPending}>
+                    <Plus />
+                    Tambah
+                  </Button>
+                </div>
+                <p className="text-xs text-fg-dim">Menu/aksi yang terlewat. AI membuatkan test case untuknya saat modul ini diuji.</p>
               </form>
-            )}
-            {editable && (
-              <p className="mt-1 text-xs text-fg-dim">
-                Tambahkan menu/aksi yang terlewat. AI akan membuatkan test case untuknya saat modul ini diuji.
-              </p>
             )}
             {save.error && <p className="mt-1 text-xs text-fail">{(save.error as Error).message}</p>}
           </Detail>
@@ -246,6 +245,14 @@ function ScreenDialog({
             >
               <Target />
               Uji modul {module}
+            </Link>
+          )}
+          {testHref && (
+            <Link
+              to={`${testHref}&screen=${encodeURIComponent(s.url)}`}
+              className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-ink-600 px-4 text-sm font-medium hover:bg-ink-850"
+            >
+              Uji layar ini saja
             </Link>
           )}
         </div>

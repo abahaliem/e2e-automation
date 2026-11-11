@@ -92,6 +92,17 @@ export function RunNewPage() {
 
   const explored = !!modules.data?.explored;
   const flowNames = (modules.data?.flows ?? []).map((f) => f.name); // modul kustom (alur bisnis)
+  // Layar modul terpilih; QA bisa menguji layar tertentu saja supaya lebih cepat (null = semua layar)
+  const moduleScreens = mode === "deep" && !flowNames.includes(module) ? modules.data?.screens?.[module] ?? [] : [];
+  const [pickedScreens, setPickedScreens] = useState<string[] | null>(null);
+  const screenParam = params.get("screen");
+  useEffect(() => {
+    setPickedScreens(screenParam && moduleScreens.some((s) => s.url === screenParam) ? [screenParam] : null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [module, modules.data]);
+  const selectedScreens = pickedScreens ?? moduleScreens.map((s) => s.url);
+  const toggleScreen = (url: string) =>
+    setPickedScreens(selectedScreens.includes(url) ? selectedScreens.filter((u) => u !== url) : [...selectedScreens, url]);
   useEffect(() => {
     if (!explored && mode === "deep") setMode("explore");
   }, [explored, mode]);
@@ -156,6 +167,9 @@ export function RunNewPage() {
         ...(mode === "explore" && askBeforeFinish ? { ask_before_finish: true } : {}),
         ...(mode === "deep" && reviewFirst ? { review_first: true } : {}),
         ...(mode === "deep" && reuse ? { reuse_cases_from: reuse, replay_scripts: replayScripts, heal } : {}),
+        ...(mode === "deep" && !reuse && moduleScreens.length > 1 && selectedScreens.length < moduleScreens.length
+          ? { screens: selectedScreens }
+          : {}),
       };
       return api.createRun(body);
     },
@@ -171,6 +185,7 @@ export function RunNewPage() {
     const next: Record<string, string> = targetError();
     if (platform === "android" && !serial) next._ = "Pilih perangkat Android yang siap dipakai";
     if (mode === "deep" && !module) next.module = "Pilih modul yang akan diuji";
+    if (mode === "deep" && !reuse && moduleScreens.length > 1 && !selectedScreens.length) next.screens = "Pilih minimal satu layar";
     if (!profiles.data?.length) next._ = "Belum ada profil AI. Tambahkan di Pengaturan > Model AI.";
     setErrors(next);
     if (Object.keys(next).length === 0) start.mutate();
@@ -440,6 +455,51 @@ export function RunNewPage() {
             </Field>
           )}
           </>
+          )}
+
+          {mode === "deep" && !reuse && moduleScreens.length > 1 && (
+            <section aria-labelledby="screens-label" className="mt-2 flex flex-col gap-3 rounded-xl border border-ink-700 bg-ink-900 p-4">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <h3 id="screens-label" className="text-sm font-medium">
+                    Layar yang diuji
+                  </h3>
+                  <p className="mt-0.5 text-xs text-fg-muted">
+                    Centang layar tertentu saja supaya pengujian lebih cepat. AI hanya menyusun test case untuk layar yang dicentang.
+                  </p>
+                </div>
+                <div className="flex shrink-0 items-center gap-3 text-xs">
+                  <span className="text-fg-muted">
+                    {selectedScreens.length} dari {moduleScreens.length} layar
+                  </span>
+                  {selectedScreens.length < moduleScreens.length && (
+                    <button type="button" className="font-medium text-accent hover:underline" onClick={() => setPickedScreens(null)}>
+                      Pilih semua
+                    </button>
+                  )}
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                {moduleScreens.map((s) => {
+                  const checked = selectedScreens.includes(s.url);
+                  return (
+                    <label
+                      key={s.url}
+                      className={cn(
+                        "flex cursor-pointer items-center gap-2.5 rounded-lg border px-3 py-2.5 text-sm transition-colors",
+                        checked ? "border-accent-line bg-accent-soft" : "border-ink-700 hover:bg-ink-850",
+                      )}
+                    >
+                      <input type="checkbox" className="h-4 w-4 accent-[var(--color-accent)]" checked={checked} onChange={() => toggleScreen(s.url)} />
+                      <span className="min-w-0 truncate" title={s.page_name}>
+                        {s.page_name}
+                      </span>
+                    </label>
+                  );
+                })}
+              </div>
+              {errors.screens && <p className="text-xs text-fail">{errors.screens}</p>}
+            </section>
           )}
 
           <div className="flex flex-col gap-2">

@@ -31,6 +31,7 @@ class RunIn(BaseModel):
     replay_scripts: bool = True
     heal: bool = True
     run_setup: bool = True
+    screens: list[str] | None = Field(default=None, max_length=200)  # Satu modul: layar tertentu saja
 
 
 class PlanCaseIn(BaseModel):
@@ -72,6 +73,7 @@ def run_out(request: Request, row: RunRow) -> dict:
     data["device_serial"] = row.options.get("device_serial")
     data["created_by"] = row.options.get("created_by")
     data["review_first"] = bool(row.options.get("review_first"))
+    data["screen_names"] = row.options.get("screen_names") or []  # layar tertentu saja (bukan seluruh modul)
     data["reuse_cases_from"] = row.options.get("reuse_cases_from")
     data["replay_scripts"] = bool(row.options.get("reuse_cases_from") and row.options.get("replay_scripts", True))
     data["awaiting_review"] = row.status == "paused" and row.note == REVIEW_NOTE
